@@ -25,7 +25,7 @@
 
     // Miscellaneous
     "confirmCloseAllTabs": true,
-    "theme": "dark",
+    "theme": "Misku Dark",
     "snapToGridOnResize": true,
     "disableAnimations": false,
     "startupActions": "",
@@ -40,38 +40,40 @@
             "name": "Windows PowerShell",
             "commandline": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
             "icon": "ms-appx:///ProfileIcons/{61c54bbd-c2c6-5271-96e7-009a87ff44bf}.png",
-            "colorScheme": "Campbell",
+            "colorScheme": "Misku Dark",
             "antialiasingMode": "grayscale",
             "closeOnExit": "automatic",
             "cursorShape": "bar",
             "fontFace": "Cascadia Mono",
             "fontSize": 12,
             "hidden": false,
-            "historySize": 9001,
+            "historySize": 20000,
             "padding": "8, 8, 8, 8",
             "snapOnInput": true,
             "altGrAliasing": true,
             "startingDirectory": "%USERPROFILE%",
-            "useAcrylic": false
+            "opacity": 94,
+            "useAcrylic": true
         },
         {
             "guid": "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}",
             "name": "Command Prompt",
             "commandline": "%SystemRoot%\\System32\\cmd.exe",
             "icon": "ms-appx:///ProfileIcons/{0caa0dad-35be-5f56-a8ff-afceeeaa6101}.png",
-            "colorScheme": "Campbell",
+            "colorScheme": "Misku Dark",
             "antialiasingMode": "grayscale",
             "closeOnExit": "automatic",
             "cursorShape": "bar",
             "fontFace": "Cascadia Mono",
             "fontSize": 12,
             "hidden": false,
-            "historySize": 9001,
+            "historySize": 20000,
             "padding": "8, 8, 8, 8",
             "snapOnInput": true,
             "altGrAliasing": true,
             "startingDirectory": "%USERPROFILE%",
-            "useAcrylic": false
+            "opacity": 94,
+            "useAcrylic": true
         }
     ],
     "schemes":
@@ -80,6 +82,29 @@
         //   - "foreground"
         //   - "background"
         //   - "cursorColor"
+        {
+            "name": "Misku Dark",
+            "background": "#101214",
+            "foreground": "#E6EAF0",
+            "cursorColor": "#8BE9FD",
+            "selectionBackground": "#334155",
+            "black": "#1B1E24",
+            "red": "#FF5F57",
+            "green": "#5AF78E",
+            "yellow": "#F3F99D",
+            "blue": "#57C7FF",
+            "purple": "#FF6AC1",
+            "cyan": "#9AEDFE",
+            "white": "#E6EAF0",
+            "brightBlack": "#5C6370",
+            "brightRed": "#FF6E67",
+            "brightGreen": "#6AF794",
+            "brightYellow": "#FFFFA5",
+            "brightBlue": "#6BD4FF",
+            "brightPurple": "#FF79C6",
+            "brightCyan": "#A4FFFF",
+            "brightWhite": "#FFFFFF"
+        },
         {
             "name": "Dimidium",
             "background": "#141414",
@@ -399,6 +424,20 @@
     ],
     "themes": [
         {
+            "name": "Misku Dark",
+            "window": {
+                "applicationTheme": "dark",
+                "useMica": true
+            },
+            "tab": {
+                "background": "terminalBackground",
+                "unfocusedBackground": "#00000000"
+            },
+            "tabRow": {
+                "unfocusedBackground": "#101214FF"
+            }
+        },
+        {
             "name": "light",
             "window": {
                 "applicationTheme": "light"
@@ -500,6 +539,7 @@
         // Tab Management
         // "command": "closeTab" is unbound by default.
         //   The closeTab command closes a tab without confirmation, even if it has multiple panes.
+        { "command": "closeTab", "id": "Terminal.CloseTab" },
         { "command": "closeOtherTabs", "id": "Terminal.CloseOtherTabs" },
         { "command": "closeTabsAfter", "id": "Terminal.CloseTabsAfter" },
         { "command": { "action" : "moveTab", "direction": "forward" }, "id": "Terminal.MoveTabForward" },

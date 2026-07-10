@@ -19,6 +19,10 @@ using namespace winrt::Windows::Foundation::Numerics;
 using namespace ::Microsoft::Console;
 
 static constexpr int AutohideTaskbarSize = 2;
+static constexpr double MiskuTitlebarRevealHeight = 10.0;
+static constexpr double MiskuTitlebarHideHeight = 44.0;
+static constexpr UINT_PTR MiskuTitlebarHoverTimerId = 0x4d54;
+static constexpr UINT MiskuTitlebarHoverTimerInterval = 100;
 
 NonClientIslandWindow::NonClientIslandWindow(const ElementTheme& requestedTheme) noexcept :
     IslandWindow{},
@@ -37,6 +41,11 @@ void NonClientIslandWindow::Close()
 {
     // Avoid further callbacks into XAML/WinUI-land after we've Close()d the DesktopWindowXamlSource
     // inside `IslandWindow::Close()`. XAML thanks us for doing that by not crashing. Thank you XAML.
+    if (_window)
+    {
+        KillTimer(_window.get(), MiskuTitlebarHoverTimerId);
+    }
+
     SetWindowLongPtr(_dragBarWindow.get(), GWLP_USERDATA, 0);
     IslandWindow::Close();
 }
@@ -343,6 +352,53 @@ void NonClientIslandWindow::_OnDragBarSizeChanged(winrt::Windows::Foundation::II
     _ResizeDragBarWindow();
 }
 
+void NonClientIslandWindow::_UpdateMiskuTitlebarHoverFromCursor() noexcept
+{
+    if (!_window)
+    {
+        return;
+    }
+
+    POINT cursor{};
+    if (!GetCursorPos(&cursor))
+    {
+        return;
+    }
+
+    const auto windowRect = GetWindowRect();
+    const auto insideWindow = cursor.x >= windowRect.left &&
+                              cursor.x < windowRect.right &&
+                              cursor.y >= windowRect.top &&
+                              cursor.y < windowRect.bottom;
+    if (!insideWindow)
+    {
+        _SetTitlebarHoverVisible(false);
+        return;
+    }
+
+    const auto relativeYInDips = gsl::narrow_cast<double>(cursor.y - windowRect.top) / GetCurrentDpiScale();
+    if (relativeYInDips <= MiskuTitlebarRevealHeight)
+    {
+        _SetTitlebarHoverVisible(true);
+    }
+    else if (_miskuTitlebarHoverVisible && relativeYInDips > MiskuTitlebarHideHeight)
+    {
+        _SetTitlebarHoverVisible(false);
+    }
+}
+
+void NonClientIslandWindow::_SetTitlebarHoverVisible(const bool visible) noexcept
+{
+    if (_miskuTitlebarHoverVisible == visible)
+    {
+        return;
+    }
+
+    _miskuTitlebarHoverVisible = visible;
+    _UpdateTitlebarVisibility();
+    _ResizeDragBarWindow();
+}
+
 void NonClientIslandWindow::OnAppInitialized()
 {
     IslandWindow::OnAppInitialized();
@@ -372,7 +428,6 @@ void NonClientIslandWindow::Initialize()
 
     _callbacks.dragBarSizeChanged = _dragBar.SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
     _callbacks.rootGridSizeChanged = _rootGrid.SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
-
     _rootGrid.Children().Append(_titlebar);
 
     Controls::Grid::SetRow(_titlebar, 0);
@@ -381,6 +436,9 @@ void NonClientIslandWindow::Initialize()
     // then make sure to update its visual state to reflect if we're in the
     // maximized state on launch.
     _callbacks.titlebarLoaded = _titlebar.Loaded(winrt::auto_revoke, [this](auto&&, auto&&) { _OnMaximizeChange(); });
+
+    _UpdateTitlebarVisibility();
+    SetTimer(_window.get(), MiskuTitlebarHoverTimerId, MiskuTitlebarHoverTimerInterval, nullptr);
 
     // LOAD BEARING: call _ResizeDragBarWindow to update the position of our
     // XAML island to reflect our current bounds. In the case of a "warm init"
@@ -966,6 +1024,13 @@ void NonClientIslandWindow::_UpdateFrameMargins() const noexcept
     }
     case WM_SETCURSOR:
         return _OnSetCursor(wParam, lParam);
+    case WM_TIMER:
+        if (wParam == MiskuTitlebarHoverTimerId)
+        {
+            _UpdateMiskuTitlebarHoverFromCursor();
+            return 0;
+        }
+        break;
     case WM_DISPLAYCHANGE:
         // GH#4166: When the DPI of the monitor changes out from underneath us,
         // resize our drag bar, to reflect its newly scaled size.
@@ -1108,7 +1173,7 @@ void NonClientIslandWindow::_SetIsBorderless(const bool borderlessEnabled)
 
     if (_titlebar)
     {
-        _titlebar.Visibility(_IsTitlebarVisible() ? Visibility::Visible : Visibility::Collapsed);
+        _UpdateTitlebarVisibility();
     }
 
     // Update the margins when entering/leaving focus mode, so we can prevent
@@ -1172,22 +1237,32 @@ void NonClientIslandWindow::_UpdateTitlebarVisibility()
         return;
     }
 
+    if (!_CanShowTitlebar())
+    {
+        _miskuTitlebarHoverVisible = false;
+    }
+
     const auto showTitlebar = _IsTitlebarVisible();
     _titlebar.Visibility(showTitlebar ? Visibility::Visible : Visibility::Collapsed);
     _titlebar.FullscreenChanged(_fullscreen);
 }
 
+bool NonClientIslandWindow::_CanShowTitlebar() const
+{
+    return !_borderless && (!_fullscreen || _showTabsFullscreen);
+}
+
 // Method Description:
-// - Returns true if the titlebar is visible. For borderless mode (aka "focus mode"),
-//   this will return false. For fullscreen, this will return false unless the user
-//   has enabled fullscreen tabs.
+// - Returns true when Misku's hover titlebar is currently visible. For borderless
+//   mode this will return false. For fullscreen, this will return false unless
+//   the user has enabled fullscreen tabs and the cursor is in the reveal zone.
 // Arguments:
 // - <none>
 // Return Value:
 // - true iff the titlebar is visible
 bool NonClientIslandWindow::_IsTitlebarVisible() const
 {
-    return !_borderless && (!_fullscreen || _showTabsFullscreen);
+    return _CanShowTitlebar() && _miskuTitlebarHoverVisible;
 }
 
 void NonClientIslandWindow::SetTitlebarBackground(winrt::Windows::UI::Xaml::Media::Brush brush)

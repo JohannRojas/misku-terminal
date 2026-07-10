@@ -23,6 +23,8 @@
 
         <local:TabRowControl x:Name="TabRow"
                              Grid.Row="0"
+                             Height="0"
+                             Visibility="Collapsed"
                              KeyUp="_KeyDownHandler" />
 
         <StackPanel Grid.Row="1"
@@ -56,13 +58,110 @@
             </mux:InfoBar>
         </StackPanel>
 
-        <Grid x:Name="TabContent"
+        <Grid x:Name="TerminalBody"
               Grid.Row="2"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">
-            <Grid.Background>
-                <ImageBrush />
-            </Grid.Background>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid x:Name="VerticalTabsPane"
+                  Grid.Column="0"
+                  Width="220"
+                  MinWidth="180"
+                  MaxWidth="320"
+                  Background="{ThemeResource TabViewBackground}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid Height="40"
+                      Padding="8,4,6,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="VerticalTabsHideButton"
+                            Grid.Column="0"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Click="_OnVerticalTabsHideClicked"
+                            Content="&#xE76B;"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            FontSize="12"
+                            ToolTipService.ToolTip="Hide tabs" />
+
+                    <TextBlock Grid.Column="1"
+                               Margin="8,0"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Text="Misku" />
+
+                    <Button x:Name="VerticalTabsNewTabButton"
+                            Grid.Column="2"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Click="_OnVerticalNewTabClicked"
+                            Content="&#xE710;"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            FontSize="12"
+                            ToolTipService.ToolTip="New tab" />
+                </Grid>
+
+                <ScrollViewer Grid.Row="1"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="VerticalTabsList"
+                                Padding="6,2,6,8"
+                                Spacing="4" />
+                </ScrollViewer>
+            </Grid>
+
+            <Grid x:Name="VerticalTabsRail"
+                  Grid.Column="0"
+                  Width="44"
+                  Background="{ThemeResource TabViewBackground}"
+                  Visibility="Collapsed">
+                <StackPanel VerticalAlignment="Top"
+                            Padding="6,4"
+                            Spacing="6">
+                    <Button x:Name="VerticalTabsShowButton"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Click="_OnVerticalTabsShowClicked"
+                            Content="&#xE76C;"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            FontSize="12"
+                            ToolTipService.ToolTip="Show tabs" />
+
+                    <Button x:Name="VerticalTabsRailNewTabButton"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Click="_OnVerticalNewTabClicked"
+                            Content="&#xE710;"
+                            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            FontSize="12"
+                            ToolTipService.ToolTip="New tab" />
+                </StackPanel>
+            </Grid>
+
+            <Grid x:Name="TabContent"
+                  Grid.Column="1"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Stretch">
+                <Grid.Background>
+                    <ImageBrush />
+                </Grid.Background>
+            </Grid>
         </Grid>
 
         <!--

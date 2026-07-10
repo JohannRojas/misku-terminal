@@ -193,6 +193,16 @@ void AppCommandlineArgs::_buildParser()
     };
     _app.add_option_function<std::string>("--size", sizeCallback, RS_A(L"CmdSizeDesc"));
 
+    auto configCallback = [](std::string string) {
+        SetEnvironmentVariableW(L"MISKU_CONFIG", winrt::to_hstring(string).c_str());
+    };
+    _app.add_option_function<std::string>("--config", configCallback, "Path to a Misku config.misku file");
+
+    auto themeOverrideCallback = [](std::string string) {
+        SetEnvironmentVariableW(L"MISKU_THEME", winrt::to_hstring(string).c_str());
+    };
+    _app.add_option_function<std::string>("--theme", themeOverrideCallback, "Misku theme name to apply for this launch");
+
     _app.add_option("-w,--window",
                     _windowTarget,
                     RS_A(L"CmdWindowTargetArgDesc"));
@@ -619,7 +629,7 @@ void AppCommandlineArgs::_addNewTerminalArgs(AppCommandlineArgs::NewTerminalSubc
     subcommand.sessionIdOption = subcommand.subcommand->add_option("--sessionId",
                                                                    _sessionId,
                                                                    RS_A(L"CmdSessionIdArgDesc"));
-    subcommand.startingDirectoryOption = subcommand.subcommand->add_option("-d,--startingDirectory",
+    subcommand.startingDirectoryOption = subcommand.subcommand->add_option("-d,--startingDirectory,--working-directory",
                                                                            _startingDirectory,
                                                                            RS_A(L"CmdStartingDirArgDesc"));
     subcommand.titleOption = subcommand.subcommand->add_option("--title",

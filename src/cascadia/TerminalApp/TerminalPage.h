@@ -163,6 +163,8 @@ namespace winrt::TerminalApp::implementation
         void OpenSettingsUI();
         void WindowActivated(const bool activated);
 
+        bool TryHandleMiskuGlobalKey(const uint32_t vkey, const uint8_t scanCode, const bool down);
+
         bool OnDirectKeyEvent(const uint32_t vkey, const uint8_t scanCode, const bool down);
 
         void AttachContent(Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::ActionAndArgs> args, uint32_t tabIndex);
@@ -218,6 +220,9 @@ namespace winrt::TerminalApp::implementation
         Microsoft::UI::Xaml::Controls::TabView _tabView{ nullptr };
         TerminalApp::TabRowControl _tabRow{ nullptr };
         Windows::UI::Xaml::Controls::Grid _tabContent{ nullptr };
+        Windows::UI::Xaml::Controls::Grid _verticalTabsPane{ nullptr };
+        Windows::UI::Xaml::Controls::Grid _verticalTabsRail{ nullptr };
+        Windows::UI::Xaml::Controls::StackPanel _verticalTabsList{ nullptr };
         Microsoft::UI::Xaml::Controls::SplitButton _newTabButton{ nullptr };
         winrt::TerminalApp::ColorPickupFlyout _tabColorPicker{ nullptr };
 
@@ -236,6 +241,8 @@ namespace winrt::TerminalApp::implementation
         bool _isMaximized{ false };
         bool _isAlwaysOnTop{ false };
         bool _showTabsFullscreen{ false };
+        bool _verticalTabsVisible{ true };
+        bool _verticalTabsExpanded{ true };
 
         std::optional<uint32_t> _loadFromPersistedLayoutIdx{};
 
@@ -335,6 +342,13 @@ namespace winrt::TerminalApp::implementation
         void _UpdateTitle(const Tab& tab);
         void _UpdateTabIcon(Tab& tab);
         void _UpdateTabView();
+        void _SetVerticalTabsVisible(bool visible);
+        void _ToggleVerticalTabsVisible();
+        void _SetVerticalTabsExpanded(bool expanded);
+        void _RefreshVerticalTabs();
+        void _OnVerticalTabsHideClicked(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _OnVerticalTabsShowClicked(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _OnVerticalNewTabClicked(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _UpdateTabWidthMode();
         void _SetBackgroundImage(const winrt::Microsoft::Terminal::Settings::Model::IAppearanceConfig& newAppearance);
 

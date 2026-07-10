@@ -331,6 +331,9 @@ namespace winrt::TerminalApp::implementation
         _HookupKeyBindings(_settings.ActionMap());
 
         _tabContent = this->TabContent();
+        _verticalTabsPane = this->VerticalTabsPane();
+        _verticalTabsRail = this->VerticalTabsRail();
+        _verticalTabsList = this->VerticalTabsList();
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _rearranging = false;
@@ -1803,8 +1806,34 @@ namespace winrt::TerminalApp::implementation
         e.Handled(true);
     }
 
+    bool TerminalPage::TryHandleMiskuGlobalKey(const uint32_t vkey, const uint8_t /*scanCode*/, const bool down)
+    {
+        const auto keyIsDown = [](const int key) noexcept { return (::GetKeyState(key) & 0x8000) != 0; };
+        const auto ctrlPressed = keyIsDown(VK_CONTROL) || keyIsDown(VK_LCONTROL) || keyIsDown(VK_RCONTROL);
+        const auto altPressed = keyIsDown(VK_MENU) || keyIsDown(VK_LMENU) || keyIsDown(VK_RMENU);
+        const auto shiftPressed = keyIsDown(VK_SHIFT) || keyIsDown(VK_LSHIFT) || keyIsDown(VK_RSHIFT);
+        const auto winPressed = keyIsDown(VK_LWIN) || keyIsDown(VK_RWIN);
+        const auto isMiskuSidebarToggle = vkey == 'B' && ctrlPressed && !altPressed && !shiftPressed && !winPressed;
+        if (!isMiskuSidebarToggle)
+        {
+            return false;
+        }
+
+        if (down)
+        {
+            _ToggleVerticalTabsVisible();
+        }
+
+        return true;
+    }
+
     bool TerminalPage::OnDirectKeyEvent(const uint32_t vkey, const uint8_t scanCode, const bool down)
     {
+        if (TryHandleMiskuGlobalKey(vkey, scanCode, down))
+        {
+            return true;
+        }
+
         const auto modifiers = _GetPressedModifierKeys();
         if (vkey == VK_SPACE && modifiers.IsAltPressed() && down)
         {
@@ -2030,6 +2059,11 @@ namespace winrt::TerminalApp::implementation
                 if (propertyName == L"Title")
                 {
                     page->_UpdateTitle(*tab);
+                    page->_RefreshVerticalTabs();
+                }
+                else if (propertyName == L"Icon" || propertyName == L"ReadOnly")
+                {
+                    page->_RefreshVerticalTabs();
                 }
                 else if (propertyName == L"Content")
                 {

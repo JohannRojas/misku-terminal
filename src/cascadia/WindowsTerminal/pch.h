@@ -55,7 +55,7 @@ Abstract:
 //  * Core so we can resume_foreground with CoreDispatcher
 //  * Controls for grid
 //  * Media for ScaleTransform
-//  * ApplicationModel for finding the path to wt.exe
+//  * ApplicationModel for finding the path to misku.exe
 //  * Primitives for Popup (used by GetOpenPopupsForXamlRoot)
 #include <winrt/Windows.UI.Core.h>
 #include <winrt/Windows.UI.Xaml.Controls.h>

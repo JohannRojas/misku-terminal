@@ -1,0 +1,14 @@
+theme = Misku Dark
+font-family = Cascadia Mono
+font-size = 12
+opacity = 0.94
+mica = true
+default-profile = PowerShell
+working-directory = %USERPROFILE%
+scrollback-lines = 20000
+cursor-style = bar
+keybind = ctrl+shift+t=new_tab
+keybind = ctrl+shift+w=close_tab
+keybind = ctrl+shift+d=split_right
+keybind = ctrl+shift+e=split_down
+keybind = f11=toggle_fullscreen

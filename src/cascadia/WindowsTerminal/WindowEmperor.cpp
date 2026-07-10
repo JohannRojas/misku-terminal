@@ -49,6 +49,39 @@ static std::vector<winrt::hstring> commandlineToArgArray(const wchar_t* commandL
     return args;
 }
 
+static void applyMiskuEarlyCommandlineOverrides()
+{
+    const auto args = commandlineToArgArray(GetCommandLineW());
+    for (size_t i = 1; i < args.size(); ++i)
+    {
+        const auto arg = std::wstring_view{ args.at(i) };
+        auto setFromNext = [&](std::wstring_view envName) {
+            if (i + 1 < args.size())
+            {
+                SetEnvironmentVariableW(envName.data(), args.at(++i).c_str());
+            }
+        };
+
+        if (arg == L"--config")
+        {
+            setFromNext(L"MISKU_CONFIG");
+        }
+        else if (arg == L"--theme")
+        {
+            setFromNext(L"MISKU_THEME");
+        }
+        else if (til::starts_with(arg, L"--config="))
+        {
+            const auto value = std::wstring{ arg.substr(9) };
+            SetEnvironmentVariableW(L"MISKU_CONFIG", value.c_str());
+        }
+        else if (til::starts_with(arg, L"--theme="))
+        {
+            const auto value = std::wstring{ arg.substr(8) };
+            SetEnvironmentVariableW(L"MISKU_THEME", value.c_str());
+        }
+    }
+}
 // Returns the length of a double-null encoded string *excluding* the trailing double-null character.
 static wil::zwstring_view stringFromDoubleNullTerminated(const wchar_t* beg)
 {
@@ -362,6 +395,8 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
         __assume(false);
     }
 
+    applyMiskuEarlyCommandlineOverrides();
+
     _app = winrt::TerminalApp::App{};
     _app.Logic().ReloadSettings();
 
@@ -483,7 +518,14 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
             }
 
             const bool keyDown = (msg.message & 1) == 0;
+            const auto keyIsDown = [](const int key) noexcept { return (::GetKeyState(key) & 0x8000) != 0; };
+            const auto isMiskuSidebarToggle = msg.wParam == 'B' &&
+                                             (keyIsDown(VK_CONTROL) || keyIsDown(VK_LCONTROL) || keyIsDown(VK_RCONTROL)) &&
+                                             !(keyIsDown(VK_MENU) || keyIsDown(VK_LMENU) || keyIsDown(VK_RMENU)) &&
+                                             !(keyIsDown(VK_SHIFT) || keyIsDown(VK_LSHIFT) || keyIsDown(VK_RSHIFT)) &&
+                                             !(keyIsDown(VK_LWIN) || keyIsDown(VK_RWIN));
             if (
+                isMiskuSidebarToggle ||
                 // GH#638: The Xaml input stack doesn't allow an application to suppress the "caret browsing"
                 // dialog experience triggered when you press F7. Official recommendation from the Xaml
                 // team is to catch F7 before we hand it off.
