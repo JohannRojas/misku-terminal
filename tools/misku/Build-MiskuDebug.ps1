@@ -33,15 +33,18 @@ if (-not $tools.MSBuild) {
     throw 'MSBuild.exe was not found. Install Visual Studio with the C++ desktop and Windows application packaging workloads.'
 }
 
-if (-not (Test-Path $tools.PackageProject)) {
-    throw "Package project not found: $($tools.PackageProject)"
+$solution = Join-Path $tools.RepoRoot 'OpenConsole.slnx'
+if (-not (Test-Path $solution)) {
+    throw "Solution not found: $solution"
 }
 
 $solutionDir = $tools.RepoRoot.TrimEnd('\') + '\'
 $logName = "msbuild-misku-$Platform-$Configuration"
+$buildTarget = if ($Clean) { '/t:Clean;Terminal\CascadiaPackage' } else { '/t:Terminal\CascadiaPackage' }
 
 $arguments = @(
-    $tools.PackageProject,
+    $solution,
+    $buildTarget,
     "/p:Configuration=$Configuration",
     "/p:Platform=$Platform",
     "/p:WindowsTerminalBranding=$Branding",
@@ -54,10 +57,6 @@ $arguments = @(
     "/bl:$logName.binlog"
 )
 
-
-if ($Clean) {
-    $arguments = @('/t:Clean;Build') + $arguments
-}
 
 Write-Host "Building Misku Terminal ($Branding branding) $Configuration $Platform..."
 Write-Host $tools.MSBuild
