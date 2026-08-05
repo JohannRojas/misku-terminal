@@ -4,16 +4,16 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{CA5CAD1A-1754-4A9D-93D7-857A9D17CB1B}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>WindowsTerminal</RootNamespace>
-    <ProjectName>WindowsTerminal</ProjectName>
-    <TargetName>WindowsTerminal</TargetName>
+    <RootNamespace>MiskuTerminal</RootNamespace>
+    <ProjectName>MiskuTerminal</ProjectName>
+    <TargetName>misku</TargetName>
     <ConfigurationType>Application</ConfigurationType>
     <OpenConsoleUniversalApp>false</OpenConsoleUniversalApp>
     <ApplicationType>Windows Store</ApplicationType>
     <WindowsStoreApp>true</WindowsStoreApp>
     <WindowsAppContainer>false</WindowsAppContainer>
     <TargetPlatformIdentifier>Windows</TargetPlatformIdentifier>
-    <VersionInfoFileDescription>Windows Terminal Host</VersionInfoFileDescription>
+    <VersionInfoFileDescription>Misku Terminal Host</VersionInfoFileDescription>
     <PgoTarget>true</PgoTarget>
   </PropertyGroup>
 

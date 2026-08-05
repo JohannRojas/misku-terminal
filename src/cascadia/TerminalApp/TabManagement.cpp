@@ -205,6 +205,15 @@ namespace winrt::TerminalApp::implementation
         // This kicks off TabView::SelectionChanged, in response to which
         // we'll attach the terminal's Xaml control to the Xaml root.
         _tabView.SelectedItem(tabViewItem);
+
+        // Misku keeps the horizontal TabView collapsed while the custom
+        // vertical tab list is visible. Attach the selected tab immediately,
+        // including during startup, instead of depending on a SelectionChanged
+        // event that a collapsed TabView does not reliably raise.
+        if (_tabRow.Visibility() == Visibility::Collapsed)
+        {
+            _UpdatedSelectedTab(*newTabImpl);
+        }
     }
 
     // Method Description:
@@ -251,26 +260,184 @@ namespace winrt::TerminalApp::implementation
     // - Handle changes in tab layout.
     void TerminalPage::_UpdateTabView()
     {
-        // The tab row should only be visible if:
-        // - we're not in focus mode
-        // - we're not in full screen, or the user has enabled fullscreen tabs
-        // - there is more than one tab, or the user has chosen to always show tabs
-        const auto isVisible = !_isInFocusMode &&
-                               (!_isFullscreen || _showTabsFullscreen) &&
-                               (_settings.GlobalSettings().ShowTabsInTitlebar() ||
-                                (_tabs.Size() > 1) ||
-                                _settings.GlobalSettings().AlwaysShowTabs());
+        const auto tabsCanBeShown = !_isInFocusMode &&
+                                   (!_isFullscreen || _showTabsFullscreen) &&
+                                   _tabs.Size() > 0;
 
+        // Misku uses a custom vertical tab rail. Keep the WinUI TabView alive
+        // for selection/reorder/close plumbing, but don't show its horizontal UI.
         if (_tabView)
         {
-            // collapse/show the tabs themselves
-            _tabView.Visibility(isVisible ? Visibility::Visible : Visibility::Collapsed);
+            _tabView.Visibility(Visibility::Collapsed);
         }
         if (_tabRow)
         {
-            // collapse/show the row that the tabs are in.
-            // NaN is the special value XAML uses for "Auto" sizing.
-            _tabRow.Height(isVisible ? NAN : 0);
+            _tabRow.Height(0);
+        }
+
+        const auto verticalTabsCanBeShown = tabsCanBeShown && _verticalTabsVisible;
+        if (_verticalTabsPane)
+        {
+            _verticalTabsPane.Visibility(verticalTabsCanBeShown && _verticalTabsExpanded ? Visibility::Visible : Visibility::Collapsed);
+        }
+        if (_verticalTabsRail)
+        {
+            _verticalTabsRail.Visibility(verticalTabsCanBeShown && !_verticalTabsExpanded ? Visibility::Visible : Visibility::Collapsed);
+        }
+
+        _RefreshVerticalTabs();
+    }
+
+    void TerminalPage::_SetVerticalTabsVisible(const bool visible)
+    {
+        if (_verticalTabsVisible == visible)
+        {
+            return;
+        }
+
+        _verticalTabsVisible = visible;
+        if (visible)
+        {
+            _verticalTabsExpanded = true;
+        }
+        _UpdateTabView();
+    }
+
+    void TerminalPage::_ToggleVerticalTabsVisible()
+    {
+        _SetVerticalTabsVisible(!_verticalTabsVisible);
+    }
+
+    void TerminalPage::_SetVerticalTabsExpanded(const bool expanded)
+    {
+        if (_verticalTabsExpanded == expanded && _verticalTabsVisible)
+        {
+            return;
+        }
+
+        _verticalTabsVisible = true;
+        _verticalTabsExpanded = expanded;
+        _UpdateTabView();
+    }
+
+    void TerminalPage::_OnVerticalTabsHideClicked(const IInspectable&, const RoutedEventArgs&)
+    {
+        _SetVerticalTabsExpanded(false);
+    }
+
+    void TerminalPage::_OnVerticalTabsShowClicked(const IInspectable&, const RoutedEventArgs&)
+    {
+        _SetVerticalTabsExpanded(true);
+    }
+
+    void TerminalPage::_OnVerticalNewTabClicked(const IInspectable& sender, const RoutedEventArgs&)
+    {
+        if (_newTabButton && _newTabButton.Flyout())
+        {
+            if (const auto target = sender.try_as<FrameworkElement>())
+            {
+                _newTabButton.Flyout().ShowAt(target);
+                return;
+            }
+
+            _OpenNewTabDropdown();
+            return;
+        }
+
+        _OpenNewTerminalViaDropdown(NewTerminalArgs());
+    }
+
+    void TerminalPage::_RefreshVerticalTabs()
+    {
+        if (!_verticalTabsList)
+        {
+            return;
+        }
+
+        auto children = _verticalTabsList.Children();
+        children.Clear();
+
+        const auto focusedIndex = _GetFocusedTabIndex();
+        const auto weakThis = get_weak();
+
+        for (uint32_t index = 0; index < _tabs.Size(); ++index)
+        {
+            const auto tab = _tabs.GetAt(index);
+            const auto isSelected = focusedIndex.has_value() && focusedIndex.value() == index;
+
+            Grid row{};
+            row.MinHeight(34);
+            row.ColumnSpacing(4);
+
+            ColumnDefinition titleColumn{};
+            titleColumn.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+            ColumnDefinition closeColumn{};
+            closeColumn.Width(GridLengthHelper::Auto());
+            row.ColumnDefinitions().Append(titleColumn);
+            row.ColumnDefinitions().Append(closeColumn);
+
+            TextBlock title{};
+            auto tabTitle = tab.Title();
+            if (tabTitle.empty())
+            {
+                tabTitle = L"Terminal";
+            }
+            title.Text(tabTitle);
+            title.TextTrimming(TextTrimming::CharacterEllipsis);
+            title.VerticalAlignment(VerticalAlignment::Center);
+
+            Button tabButton{};
+            tabButton.HorizontalAlignment(HorizontalAlignment::Stretch);
+            tabButton.HorizontalContentAlignment(HorizontalAlignment::Stretch);
+            tabButton.MinWidth(0);
+            tabButton.Height(34);
+            tabButton.Padding(ThicknessHelper::FromLengths(10, 0, 8, 0));
+            tabButton.Content(title);
+            tabButton.FontWeight(isSelected ? FontWeights::SemiBold() : FontWeights::Normal());
+            Windows::UI::Color selectedTabColor{};
+            selectedTabColor.A = 0x33;
+            selectedTabColor.R = 0x8B;
+            selectedTabColor.G = 0xE9;
+            selectedTabColor.B = 0xFD;
+            tabButton.Background(isSelected ?
+                                     WUX::Media::SolidColorBrush{ selectedTabColor } :
+                                     WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+            Automation::AutomationProperties::SetName(tabButton, tabTitle);
+            tabButton.Click([weakThis, tab](auto&&, auto&&) {
+                if (auto page{ weakThis.get() })
+                {
+                    if (const auto tabIndex = page->_GetTabIndex(tab))
+                    {
+                        page->_SelectTab(tabIndex.value());
+                    }
+                }
+            });
+
+            Grid::SetColumn(tabButton, 0);
+            row.Children().Append(tabButton);
+
+            Button closeButton{};
+            closeButton.Width(32);
+            closeButton.Height(34);
+            closeButton.MinWidth(0);
+            closeButton.Padding(ThicknessHelper::FromLengths(0, 0, 0, 0));
+            closeButton.Content(box_value(L"\xE711"));
+            closeButton.FontFamily(WUX::Media::FontFamily{ L"Segoe MDL2 Assets" });
+            closeButton.FontSize(10);
+            ToolTip closeToolTip{};
+            closeToolTip.Content(box_value(L"Close tab"));
+            ToolTipService::SetToolTip(closeButton, closeToolTip);
+            closeButton.Click([weakThis, tab](auto&&, auto&&) {
+                if (auto page{ weakThis.get() })
+                {
+                    page->_HandleCloseTabRequested(tab);
+                }
+            });
+
+            Grid::SetColumn(closeButton, 1);
+            row.Children().Append(closeButton);
+
+            children.Append(row);
         }
     }
 
@@ -559,6 +726,8 @@ namespace winrt::TerminalApp::implementation
             _rearrangeFrom = std::nullopt;
             _rearrangeTo = std::nullopt;
         }
+
+        _UpdateTabView();
     }
 
     // Method Description:
@@ -714,10 +883,9 @@ namespace winrt::TerminalApp::implementation
 
     // Method Description:
     // - An async method for changing the focused tab on the UI thread. This
-    //   method will _only_ set the selected item of the TabView, which will
-    //   then also trigger a TabView::SelectionChanged event, which we'll handle
-    //   in TerminalPage::_OnTabSelectionChanged, where we'll mark the new tab
-    //   as focused.
+    //   method sets the selected item of the TabView, which will
+    //   then also trigger a TabView::SelectionChanged event, and also
+    //   updates the visible content directly for Misku's hidden TabView mode.
     // Arguments:
     // - tab: tab to focus.
     // Return Value:
@@ -740,6 +908,10 @@ namespace winrt::TerminalApp::implementation
             if (_tabs.IndexOf(tab, tabIndex))
             {
                 _tabView.SelectedItem(tab.TabViewItem());
+
+                // The horizontal TabView is hidden in Misku, so don't rely on
+                // its SelectionChanged event to swap visible terminal content.
+                _UpdatedSelectedTab(tab);
             }
         }
     }
@@ -1115,6 +1287,7 @@ namespace winrt::TerminalApp::implementation
             }
 
             tab.TabViewItem().StartBringIntoView();
+            _RefreshVerticalTabs();
 
             // Raise an event that our title changed
             TitleChanged.raise(*this, nullptr);

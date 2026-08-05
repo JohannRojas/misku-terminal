@@ -164,6 +164,7 @@ changelist
 CHARSETINFO
 chshdng
 CHT
+Cim
 CLASSSTRING
 cleartype
 CLICKACTIVE
@@ -524,8 +525,10 @@ ERRORONEXIT
 espt
 esrp
 ESV
+etl
 ETW
 EUDC
+euo
 eventing
 evflags
 execd
@@ -551,6 +554,7 @@ FGCOLOR
 FGHIJ
 fgidx
 FGs
+Figma
 FILEDESCRIPTION
 filehops
 FILESUBTYPE
@@ -567,6 +571,7 @@ FINDSTRINGEXACT
 FITZPATRICK
 FIXEDFILEINFO
 Flg
+flp
 flyouts
 fmodern
 fmtarg
@@ -683,6 +688,7 @@ GValue
 GWL
 GWLP
 gwsz
+gydt
 HABCDEF
 Hackathon
 HALTCOND
@@ -771,6 +777,7 @@ IFACEMETHODIMP
 ification
 IGNORELANGUAGE
 iid
+iin
 IIo
 ILC
 ILCo
@@ -827,6 +834,7 @@ kazum
 kernelbase
 kernelbasestaging
 KEYBDINPUT
+keybind
 keychord
 keydowns
 KEYFIRST
@@ -989,10 +997,15 @@ minkernel
 MINMAXINFO
 minwin
 minwindef
+MISKU
+Misku
+misku
+miskud
 misprediction
 MMBB
 mmcc
 MMCPL
+MMdd
 MNC
 MNOPQ
 MNOPQR
@@ -1919,6 +1932,8 @@ wparam
 wpf
 wpfdotnet
 WPR
+Wpr
+wpr
 wprp
 wprpi
 wregex

@@ -70,6 +70,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TryCreateXamlObjects);
 
         TEST_METHOD(TryInitializePage);
+        TEST_METHOD(TryInitializePageWithoutStartupActions);
 
         TEST_METHOD(CreateSimpleTerminalXamlType);
         TEST_METHOD(CreateTerminalMuxXamlType);
@@ -109,7 +110,8 @@ namespace TerminalAppLocalTests
 
     private:
         void _initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
-                                     CascadiaSettings initialSettings);
+                                     CascadiaSettings initialSettings,
+                                     bool addStartupAction = true);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup();
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
@@ -225,7 +227,8 @@ namespace TerminalAppLocalTests
     // Return Value:
     // - <none>
     void TabTests::_initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
-                                           CascadiaSettings initialSettings)
+                                           CascadiaSettings initialSettings,
+                                           const bool addStartupAction)
     {
         // This is super wacky, but we can't just initialize the
         // com_ptr<impl::TerminalPage> in the lambda and assign it back out of
@@ -263,20 +266,23 @@ namespace TerminalAppLocalTests
 
         Log::Comment(L"Create() the TerminalPage");
 
-        result = RunOnUIThread([&page]() {
+        result = RunOnUIThread([&page, addStartupAction]() {
             VERIFY_IS_NOT_NULL(page);
             VERIFY_IS_NOT_NULL(page->_settings);
             page->Create();
             Log::Comment(L"Create()'d the page successfully");
 
-            // Build a NewTab action, to make sure we start with one. The real
-            // Terminal will always get one from AppCommandlineArgs.
-            NewTerminalArgs newTerminalArgs{};
-            NewTabArgs args{ newTerminalArgs };
-            ActionAndArgs newTabAction{ ShortcutAction::NewTab, args };
-            // push the arg onto the front
-            page->_startupActions.push_back(std::move(newTabAction));
-            Log::Comment(L"Added a single newTab action");
+            if (addStartupAction)
+            {
+                // Build a NewTab action, to make sure we start with one. The real
+                // Terminal will normally get one from AppCommandlineArgs.
+                NewTerminalArgs newTerminalArgs{};
+                NewTabArgs args{ newTerminalArgs };
+                ActionAndArgs newTabAction{ ShortcutAction::NewTab, args };
+                // push the arg onto the front
+                page->_startupActions.push_back(std::move(newTabAction));
+                Log::Comment(L"Added a single newTab action");
+            }
 
             auto app = ::winrt::Windows::UI::Xaml::Application::Current();
 
@@ -291,6 +297,10 @@ namespace TerminalAppLocalTests
         Log::Comment(L"...Done");
 
         result = RunOnUIThread([&page]() {
+            VERIFY_ARE_EQUAL(1u,
+                             page->_tabContent.Children().Size(),
+                             L"The initial tab content must be attached before initialization completes.");
+
             // In the real app, this isn't a problem, but doesn't happen
             // reliably in the unit tests.
             Log::Comment(L"Ensure we set the first tab as the selected one.");
@@ -345,6 +355,32 @@ namespace TerminalAppLocalTests
         // it's weird.
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page{ nullptr };
         _initializeTerminalPage(page, settings0);
+
+        auto result = RunOnUIThread([&page]() {
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+        });
+        VERIFY_SUCCEEDED(result);
+    }
+
+    void TabTests::TryInitializePageWithoutStartupActions()
+    {
+        static constexpr std::wstring_view settingsJson0{ LR"(
+        {
+            "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+            "profiles": [
+                {
+                    "name" : "profile0",
+                    "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                    "historySize": 1
+                }
+            ]
+        })" };
+
+        CascadiaSettings settings0{ settingsJson0, {} };
+        VERIFY_IS_NOT_NULL(settings0);
+
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page{ nullptr };
+        _initializeTerminalPage(page, settings0, false);
 
         auto result = RunOnUIThread([&page]() {
             VERIFY_ARE_EQUAL(1u, page->_tabs.Size());

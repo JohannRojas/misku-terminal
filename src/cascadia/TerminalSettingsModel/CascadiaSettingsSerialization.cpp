@@ -4,8 +4,12 @@
 #include "pch.h"
 #include "CascadiaSettings.h"
 
+#include <array>
+#include <cctype>
+#include <LibraryResources.h>
 #include <fmt/chrono.h>
 #include <shlobj.h>
+#include <sstream>
 #include <til/latch.h>
 #include <til/io.h>
 
@@ -61,6 +65,472 @@ static constexpr std::wstring_view FragmentsSubDirectory{ L"\\Fragments" };
 static constexpr std::wstring_view FragmentsPath{ L"\\Microsoft\\Windows Terminal\\Fragments" };
 
 static constexpr std::wstring_view AppExtensionHostName{ L"com.microsoft.windows.terminal.settings" };
+static constexpr std::wstring_view MiskuConfigEnvVar{ L"MISKU_CONFIG" };
+static constexpr std::wstring_view MiskuThemeEnvVar{ L"MISKU_THEME" };
+
+struct MiskuConfigOverlay
+{
+    std::optional<std::string> json;
+    std::optional<std::wstring> error;
+};
+
+static std::string_view miskuTrim(std::string_view value)
+{
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())))
+    {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())))
+    {
+        value.remove_suffix(1);
+    }
+    return value;
+}
+
+static std::string miskuUnquote(std::string_view value)
+{
+    value = miskuTrim(value);
+    if (value.size() >= 2 && ((value.front() == '"' && value.back() == '"') || (value.front() == '\'' && value.back() == '\'')))
+    {
+        value.remove_prefix(1);
+        value.remove_suffix(1);
+    }
+    return std::string{ value };
+}
+
+static std::string miskuLower(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](const unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    return value;
+}
+
+static bool miskuParseBool(std::string_view value, bool& result)
+{
+    const auto lowered = miskuLower(miskuUnquote(value));
+    if (lowered == "true" || lowered == "1" || lowered == "yes" || lowered == "on")
+    {
+        result = true;
+        return true;
+    }
+    if (lowered == "false" || lowered == "0" || lowered == "no" || lowered == "off")
+    {
+        result = false;
+        return true;
+    }
+    return false;
+}
+
+static bool miskuParseInt(std::string_view value, int& result)
+{
+    try
+    {
+        size_t parsed = 0;
+        const auto text = miskuUnquote(value);
+        const auto number = std::stoi(text, &parsed);
+        if (parsed == text.size())
+        {
+            result = number;
+            return true;
+        }
+    }
+    CATCH_LOG()
+    return false;
+}
+
+static bool miskuParseDouble(std::string_view value, double& result)
+{
+    try
+    {
+        size_t parsed = 0;
+        const auto text = miskuUnquote(value);
+        const auto number = std::stod(text, &parsed);
+        if (parsed == text.size())
+        {
+            result = number;
+            return true;
+        }
+    }
+    CATCH_LOG()
+    return false;
+}
+
+static Json::Value miskuKeybindingFromAction(std::string_view keys, std::string_view action)
+{
+    static constexpr std::array mappings{
+        std::pair{ std::string_view{ "new_tab" }, std::string_view{ "Terminal.OpenNewTab" } },
+        std::pair{ std::string_view{ "close_tab" }, std::string_view{ "Terminal.CloseTab" } },
+        std::pair{ std::string_view{ "split_right" }, std::string_view{ "Terminal.SplitPaneRight" } },
+        std::pair{ std::string_view{ "split_down" }, std::string_view{ "Terminal.SplitPaneDown" } },
+        std::pair{ std::string_view{ "open_config" }, std::string_view{ "Terminal.OpenSettingsFile" } },
+        std::pair{ std::string_view{ "reload_config" }, std::string_view{ "Terminal.OpenSettingsFile" } },
+        std::pair{ std::string_view{ "copy" }, std::string_view{ "Terminal.CopyToClipboard" } },
+        std::pair{ std::string_view{ "paste" }, std::string_view{ "Terminal.PasteFromClipboard" } },
+        std::pair{ std::string_view{ "toggle_fullscreen" }, std::string_view{ "Terminal.ToggleFullscreen" } },
+    };
+
+    Json::Value binding{ Json::ValueType::objectValue };
+    binding["keys"] = miskuUnquote(keys);
+
+    const auto normalizedAction = miskuLower(miskuUnquote(action));
+    for (const auto& [name, id] : mappings)
+    {
+        if (normalizedAction == name)
+        {
+            binding["id"] = std::string{ id };
+            return binding;
+        }
+    }
+
+    // Advanced escape hatch: allow binding directly to an existing Terminal.* command id.
+    binding["id"] = miskuUnquote(action);
+    return binding;
+}
+
+static Json::Value miskuThemeJson(const std::string& name, std::optional<bool> useMica)
+{
+    Json::Value theme{ Json::ValueType::objectValue };
+    theme["name"] = name;
+    theme["window"]["applicationTheme"] = "dark";
+    if (useMica.has_value())
+    {
+        theme["window"]["useMica"] = *useMica;
+    }
+    theme["tab"]["background"] = "terminalBackground";
+    theme["tab"]["unfocusedBackground"] = "#00000000";
+    theme["tabRow"]["unfocusedBackground"] = "#101214FF";
+    return theme;
+}
+
+static std::optional<std::filesystem::path> miskuConfigPathFromEnvironment()
+{
+    auto size = GetEnvironmentVariableW(MiskuConfigEnvVar.data(), nullptr, 0);
+    if (size == 0)
+    {
+        return std::nullopt;
+    }
+
+    std::wstring buffer(size, L'\0');
+    size = GetEnvironmentVariableW(MiskuConfigEnvVar.data(), buffer.data(), size);
+    if (size == 0)
+    {
+        return std::nullopt;
+    }
+    buffer.resize(size);
+    return std::filesystem::path{ buffer };
+}
+
+static std::optional<std::string> miskuThemeFromEnvironment()
+{
+    auto size = GetEnvironmentVariableW(MiskuThemeEnvVar.data(), nullptr, 0);
+    if (size == 0)
+    {
+        return std::nullopt;
+    }
+
+    std::wstring buffer(size, L'\0');
+    size = GetEnvironmentVariableW(MiskuThemeEnvVar.data(), buffer.data(), size);
+    if (size == 0)
+    {
+        return std::nullopt;
+    }
+    buffer.resize(size);
+    return til::u16u8(buffer);
+}
+
+static std::vector<std::filesystem::path> miskuConfigSearchPaths()
+{
+    std::vector<std::filesystem::path> paths;
+
+    if (auto envPath = miskuConfigPathFromEnvironment())
+    {
+        paths.emplace_back(std::move(*envPath));
+    }
+
+    paths.emplace_back(wil::ExpandEnvironmentStringsW<std::wstring>(LR"(%USERPROFILE%\.config\misku\config.misku)"));
+    paths.emplace_back(wil::ExpandEnvironmentStringsW<std::wstring>(LR"(%LOCALAPPDATA%\MiskuTerminal\config.misku)"));
+    return paths;
+}
+
+static MiskuConfigOverlay miskuConfigToJsonOverlay(const std::filesystem::path& path, const std::string_view content)
+{
+    Json::Value root{ Json::ValueType::objectValue };
+    Json::Value& profileDefaults = root["profiles"]["defaults"];
+    std::optional<bool> useMica;
+    std::string themeName = "Misku Dark";
+    bool themeWasSet = false;
+    bool themeNeedsDefinition = false;
+
+    if (const auto envTheme = miskuThemeFromEnvironment())
+    {
+        themeName = *envTheme;
+        root["theme"] = themeName;
+        themeWasSet = true;
+    }
+
+    std::istringstream stream{ std::string{ content } };
+    std::string line;
+    size_t lineNumber = 0;
+    while (std::getline(stream, line))
+    {
+        ++lineNumber;
+        auto view = miskuTrim(line);
+        if (view.empty() || view.front() == '#' || (view.size() >= 2 && view.substr(0, 2) == "//"))
+        {
+            continue;
+        }
+
+        const auto separator = view.find('=');
+        if (separator == std::string_view::npos)
+        {
+            return { std::nullopt, fmt::format(FMT_COMPILE(L"{}:{}: expected key = value"), path.native(), lineNumber) };
+        }
+
+        const auto key = miskuLower(miskuUnquote(view.substr(0, separator)));
+        const auto value = view.substr(separator + 1);
+
+        if (key == "font-family")
+        {
+            profileDefaults["fontFace"] = miskuUnquote(value);
+        }
+        else if (key == "font-size")
+        {
+            double fontSize = 0;
+            if (!miskuParseDouble(value, fontSize) || fontSize <= 0)
+            {
+                return { std::nullopt, fmt::format(FMT_COMPILE(L"{}:{}: invalid font-size"), path.native(), lineNumber) };
+            }
+            profileDefaults["fontSize"] = fontSize;
+        }
+        else if (key == "theme")
+        {
+            themeName = miskuUnquote(value);
+            root["theme"] = themeName;
+            themeWasSet = true;
+        }
+        else if (key == "background")
+        {
+            profileDefaults["background"] = miskuUnquote(value);
+        }
+        else if (key == "foreground")
+        {
+            profileDefaults["foreground"] = miskuUnquote(value);
+        }
+        else if (key == "opacity")
+        {
+            double opacity = 0;
+            if (!miskuParseDouble(value, opacity) || opacity < 0 || opacity > 100)
+            {
+                return { std::nullopt, fmt::format(FMT_COMPILE(L"{}:{}: invalid opacity"), path.native(), lineNumber) };
+            }
+            profileDefaults["opacity"] = opacity <= 1.0 ? static_cast<int>(opacity * 100.0 + 0.5) : static_cast<int>(opacity + 0.5);
+        }
+        else if (key == "mica")
+        {
+            bool mica = false;
+            if (!miskuParseBool(value, mica))
+            {
+                return { std::nullopt, fmt::format(FMT_COMPILE(L"{}:{}: invalid mica value"), path.native(), lineNumber) };
+            }
+            useMica = mica;
+            root["theme"] = themeName;
+            themeNeedsDefinition = true;
+        }
+        else if (key == "default-profile")
+        {
+            root["defaultProfile"] = miskuUnquote(value);
+        }
+        else if (key == "working-directory")
+        {
+            profileDefaults["startingDirectory"] = miskuUnquote(value);
+        }
+        else if (key == "scrollback-lines")
+        {
+            int historySize = 0;
+            if (!miskuParseInt(value, historySize) || historySize < 0)
+            {
+                return { std::nullopt, fmt::format(FMT_COMPILE(L"{}:{}: invalid scrollback-lines"), path.native(), lineNumber) };
+            }
+            profileDefaults["historySize"] = historySize;
+        }
+        else if (key == "cursor-style")
+        {
+            profileDefaults["cursorShape"] = miskuUnquote(value);
+        }
+        else if (key == "keybind")
+        {
+            const auto binding = miskuTrim(value);
+            const auto bindingSeparator = binding.find('=');
+            if (bindingSeparator == std::string_view::npos)
+            {
+                return { std::nullopt, fmt::format(FMT_COMPILE(L"{}:{}: invalid keybind, expected keybind = keys=action"), path.native(), lineNumber) };
+            }
+            root["keybindings"].append(miskuKeybindingFromAction(binding.substr(0, bindingSeparator), binding.substr(bindingSeparator + 1)));
+        }
+        else
+        {
+            return { std::nullopt, fmt::format(FMT_COMPILE(L"{}:{}: unknown Misku config key '{}'"), path.native(), lineNumber, til::u8u16(key)) };
+        }
+    }
+
+    if (themeWasSet || themeNeedsDefinition)
+    {
+        root["themes"].append(miskuThemeJson(themeName, useMica));
+    }
+
+    Json::StreamWriterBuilder writer;
+    writer.settings_["enableYAMLCompatibility"] = true;
+    writer.settings_["indentation"] = "    ";
+    return { Json::writeString(writer, root), std::nullopt };
+}
+
+static MiskuConfigOverlay loadMiskuConfigOverlay()
+{
+    for (const auto& path : miskuConfigSearchPaths())
+    {
+        if (!std::filesystem::exists(path))
+        {
+            continue;
+        }
+
+        try
+        {
+            const auto content = til::io::read_file_as_utf8_string_if_exists(path);
+            return miskuConfigToJsonOverlay(path, content);
+        }
+        catch (const winrt::hresult_error& e)
+        {
+            return { std::nullopt, fmt::format(FMT_COMPILE(L"{}: {}"), path.native(), e.message()) };
+        }
+        catch (const std::exception& e)
+        {
+            return { std::nullopt, fmt::format(FMT_COMPILE(L"{}: {}"), path.native(), til::u8u16(e.what())) };
+        }
+    }
+
+    if (miskuThemeFromEnvironment())
+    {
+        return miskuConfigToJsonOverlay({}, {});
+    }
+
+    return {};
+}
+
+static void miskuWriteConfigError(const std::wstring& error) noexcept
+{
+    try
+    {
+        const std::filesystem::path logPath{ wil::ExpandEnvironmentStringsW<std::wstring>(LR"(%LOCALAPPDATA%\MiskuTerminal\config.misku.error.log)") };
+        std::filesystem::create_directories(logPath.parent_path());
+        til::io::write_utf8_string_to_file(logPath, til::u16u8(L"Misku Terminal ignored config.misku:\r\n" + error + L"\r\n"));
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
+    }
+}
+
+static Json::Value parseJsonForMiskuMerge(const std::string_view content)
+{
+    Json::Value json;
+    std::string errors;
+    const std::unique_ptr<Json::CharReader> reader{ Json::CharReaderBuilder{}.newCharReader() };
+    if (!reader->parse(content.data(), content.data() + content.size(), &json, &errors))
+    {
+        throw winrt::hresult_error(WEB_E_INVALID_JSON_STRING, winrt::to_hstring(errors));
+    }
+    return json;
+}
+
+static void mergeMiskuJson(Json::Value& target, const Json::Value& overlay)
+{
+    if (!target.isObject() || !overlay.isObject())
+    {
+        target = overlay;
+        return;
+    }
+
+    for (const auto& key : overlay.getMemberNames())
+    {
+        const auto& overlayValue = overlay[key];
+        auto& targetValue = target[key];
+        if (targetValue.isObject() && overlayValue.isObject())
+        {
+            mergeMiskuJson(targetValue, overlayValue);
+        }
+        else if (targetValue.isArray() && overlayValue.isArray())
+        {
+            for (const auto& item : overlayValue)
+            {
+                targetValue.append(item);
+            }
+        }
+        else
+        {
+            targetValue = overlayValue;
+        }
+    }
+}
+
+static std::optional<std::string> tryMergeMiskuConfigOverlay(std::string_view userSettings, const std::string& overlay)
+{
+    try
+    {
+        auto baseJson = parseJsonForMiskuMerge(userSettings.empty() ? std::string_view{ "{}" } : userSettings);
+        auto overlayJson = parseJsonForMiskuMerge(overlay);
+        mergeMiskuJson(baseJson, overlayJson);
+
+        Json::StreamWriterBuilder writer;
+        writer.settings_["enableYAMLCompatibility"] = true;
+        writer.settings_["indentation"] = "    ";
+        return Json::writeString(writer, baseJson);
+    }
+    catch (...)
+    {
+        LOG_CAUGHT_EXCEPTION();
+        return std::nullopt;
+    }
+}
+
+static std::string applyMiskuConfigOverlay(std::string_view userSettings)
+{
+    static std::optional<std::string> lastValidOverlay;
+
+    auto overlay = loadMiskuConfigOverlay();
+    if (!overlay.json.has_value())
+    {
+        if (overlay.error.has_value())
+        {
+            OutputDebugStringW((L"Misku Terminal ignored config.misku: " + *overlay.error + L"\n").c_str());
+            miskuWriteConfigError(*overlay.error);
+        }
+
+        if (lastValidOverlay.has_value())
+        {
+            if (auto merged = tryMergeMiskuConfigOverlay(userSettings, *lastValidOverlay))
+            {
+                return *merged;
+            }
+        }
+
+        return std::string{ userSettings };
+    }
+
+    if (auto merged = tryMergeMiskuConfigOverlay(userSettings, *overlay.json))
+    {
+        lastValidOverlay = *overlay.json;
+        return *merged;
+    }
+
+    if (lastValidOverlay.has_value())
+    {
+        if (auto merged = tryMergeMiskuConfigOverlay(userSettings, *lastValidOverlay))
+        {
+            return *merged;
+        }
+    }
+
+    return std::string{ userSettings };
+}
 
 // make sure this matches defaults.json.
 static constexpr winrt::guid DEFAULT_WINDOWS_POWERSHELL_GUID{ 0x61c54bbd, 0xc2c6, 0x5271, { 0x96, 0xe7, 0x00, 0x9a, 0x87, 0xff, 0x44, 0xbf } };
@@ -1262,11 +1732,13 @@ try
     }
 
     // Only uses default settings when firstTimeSetup is true and releaseSettingExists is false
-    // Otherwise use existing settingsString
+    // Otherwise use existing settingsString. Misku then layers config.misku over that JSON,
+    // while the normal settings loader continues to own validation and merging.
     const auto settingsStringView = (firstTimeSetup && !releaseSettingExists) ? LoadStringResource(IDR_USER_DEFAULTS) : settingsString;
+    auto effectiveSettingsString = applyMiskuConfigOverlay(settingsStringView);
     auto mustWriteToDisk = firstTimeSetup;
 
-    SettingsLoader loader{ settingsStringView, LoadStringResource(IDR_DEFAULTS) };
+    SettingsLoader loader{ effectiveSettingsString, LoadStringResource(IDR_DEFAULTS) };
 
     winrt::hstring baseUserSettingsPath{ GetBaseSettingsPath().native() };
     loader.userSettings.baseLayerProfile->SourceBasePath = baseUserSettingsPath;

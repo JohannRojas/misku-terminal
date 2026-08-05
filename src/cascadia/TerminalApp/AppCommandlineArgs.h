@@ -22,7 +22,7 @@ class TerminalApp::AppCommandlineArgs final
 public:
     static constexpr std::string_view NixHelpFlag{ "-?" };
     static constexpr std::string_view WindowsHelpFlag{ "/?" };
-    static constexpr std::wstring_view PlaceholderExeName{ L"wt.exe" };
+    static constexpr std::wstring_view PlaceholderExeName{ L"misku.exe" };
 
     AppCommandlineArgs();
     ~AppCommandlineArgs() = default;
@@ -52,7 +52,7 @@ public:
 private:
     static const std::wregex _commandDelimiterRegex;
 
-    CLI::App _app{ "wt - the Windows Terminal" };
+    CLI::App _app{ "misku - Misku Terminal" };
 
     // This is a helper struct to encapsulate all the options for a subcommand
     // that produces a NewTerminalArgs.

@@ -68,6 +68,7 @@ private:
 
     bool _isMaximized;
     bool _trackingMouse{ false };
+    bool _miskuTitlebarHoverVisible{ true };
 
     [[nodiscard]] static LRESULT __stdcall _StaticInputSinkWndProc(HWND const window, UINT const message, WPARAM const wparam, LPARAM const lparam) noexcept;
     [[nodiscard]] LRESULT _InputSinkMessageHandler(UINT const message, WPARAM const wparam, LPARAM const lparam) noexcept;
@@ -85,9 +86,12 @@ private:
     [[nodiscard]] LRESULT _OnSetCursor(WPARAM wParam, LPARAM lParam) const noexcept;
     void _OnMaximizeChange() noexcept;
     void _OnDragBarSizeChanged(winrt::Windows::Foundation::IInspectable sender, winrt::Windows::UI::Xaml::SizeChangedEventArgs eventArgs);
+    void _UpdateMiskuTitlebarHoverFromCursor() noexcept;
+    void _SetTitlebarHoverVisible(bool visible) noexcept;
 
     void _SetIsBorderless(const bool borderlessEnabled) override;
     void _SetIsFullscreen(const bool fullscreenEnabled) override;
+    bool _CanShowTitlebar() const;
     bool _IsTitlebarVisible() const;
 
     void _UpdateFrameMargins() const noexcept;

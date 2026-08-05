@@ -1,0 +1,320 @@
+name: Misku CI/CD
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_channel:
+        description: Publish mode for this run
+        required: true
+        default: prerelease
+        type: choice
+        options:
+          - build-only
+          - prerelease
+          - stable
+      version:
+        description: Optional three-part version, for example 1.2.3
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: misku-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  BUILD_PLATFORM: x64
+  BUILD_CONFIGURATION: Release
+
+jobs:
+  build:
+    name: Build and verify x64 Release
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 180
+    outputs:
+      artifact_name: ${{ steps.package.outputs.artifact_name }}
+      display_version: ${{ steps.version.outputs.display_version }}
+      tag: ${{ steps.version.outputs.tag }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Select release metadata
+        id: version
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_CHANNEL: ${{ inputs.release_channel }}
+        run: |
+          $displayVersion = if ($env:REQUESTED_VERSION) { $env:REQUESTED_VERSION.Trim() } else { '' }
+          if ([string]::IsNullOrWhiteSpace($displayVersion)) {
+              $displayVersion = "1.0.$env:GITHUB_RUN_NUMBER"
+          }
+
+          if ($displayVersion -notmatch '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$') {
+              throw "Version '$displayVersion' must contain exactly three numeric components."
+          }
+
+          foreach ($part in @($Matches.major, $Matches.minor, $Matches.patch)) {
+              if ([int]$part -gt 65535) {
+                  throw "Every version component must fit in an MSIX version field (0-65535)."
+              }
+          }
+
+          $channel = $env:REQUESTED_CHANNEL
+          if ([string]::IsNullOrWhiteSpace($channel)) {
+              $channel = if ($env:GITHUB_EVENT_NAME -eq 'push') { 'prerelease' } else { 'build-only' }
+          }
+
+          $appxVersion = "$displayVersion.0"
+          $isPrerelease = ($channel -ne 'stable').ToString().ToLowerInvariant()
+          "display_version=$displayVersion" >> $env:GITHUB_OUTPUT
+          "appx_version=$appxVersion" >> $env:GITHUB_OUTPUT
+          "tag=misku-v$displayVersion" >> $env:GITHUB_OUTPUT
+          "is_prerelease=$isPrerelease" >> $env:GITHUB_OUTPUT
+
+      - name: Validate repository inputs
+        shell: pwsh
+        run: |
+          $parseErrors = [System.Collections.Generic.List[string]]::new()
+          Get-ChildItem .\tools\misku -Filter '*.ps1' | ForEach-Object {
+              $tokens = $null
+              $errors = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile(
+                  $_.FullName,
+                  [ref]$tokens,
+                  [ref]$errors)
+              foreach ($error in $errors) {
+                  $parseErrors.Add("$($_.Name): $($error.Message)")
+              }
+          }
+
+          Get-ChildItem .\src\cascadia\CascadiaPackage -Filter '*.appxmanifest' | ForEach-Object {
+              try {
+                  [void][xml](Get-Content -LiteralPath $_.FullName -Raw)
+              } catch {
+                  $parseErrors.Add("$($_.Name): $($_.Exception.Message)")
+              }
+          }
+
+          if ($parseErrors.Count) {
+              throw ($parseErrors -join [Environment]::NewLine)
+          }
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: packages
+          key: misku-nuget-${{ runner.os }}-${{ hashFiles('NuGet.config', 'dep/nuget/packages.config', 'src/common.nugetversions.props', 'src/common.nugetversions.targets') }}
+          restore-keys: |
+            misku-nuget-${{ runner.os }}-
+
+      - name: Restore dependencies
+        shell: pwsh
+        run: |
+          $toolchain = .\tools\misku\Get-MiskuToolchain.ps1 -Quiet
+          if (-not $toolchain.MSBuild) {
+              throw 'MSBuild.exe was not found on the runner.'
+          }
+
+          & $toolchain.MSBuild .\OpenConsole.slnx /t:Restore /p:Platform=$env:BUILD_PLATFORM /p:Configuration=$env:BUILD_CONFIGURATION /m /v:minimal
+          if ($LASTEXITCODE -ne 0) {
+              throw "Solution restore failed with exit code $LASTEXITCODE."
+          }
+
+          & .\dep\nuget\nuget.exe restore .\dep\nuget\packages.config -NonInteractive -Verbosity normal
+          if ($LASTEXITCODE -ne 0) {
+              throw "Global dependency restore failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Build Misku Terminal
+        shell: pwsh
+        run: |
+          $manifestPath = '.\src\cascadia\CascadiaPackage\Package.appxmanifest'
+          [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
+          $manifest.Package.Identity.Version = '${{ steps.version.outputs.appx_version }}'
+          $manifest.Save((Resolve-Path $manifestPath))
+
+          $buildParameters = @{
+              Platform = $env:BUILD_PLATFORM
+              Configuration = $env:BUILD_CONFIGURATION
+              Branding = 'Release'
+              Parallel = $true
+          }
+          .\tools\misku\Build-MiskuDebug.ps1 @buildParameters
+
+      - name: Validate package
+        id: validate
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $env:GITHUB_WORKSPACE 'src\cascadia\CascadiaPackage\AppPackages'
+          $msix = Get-ChildItem -LiteralPath $packageRoot -Recurse -Filter 'CascadiaPackage_*.msix' |
+              Sort-Object LastWriteTimeUtc -Descending |
+              Select-Object -First 1
+          if (-not $msix) {
+              throw "No CascadiaPackage MSIX was produced under $packageRoot."
+          }
+
+          $xamlAppx = Get-ChildItem -LiteralPath $msix.DirectoryName -Recurse -Filter 'Microsoft.UI.Xaml*.appx' |
+              Where-Object { $_.FullName -like '*\x64\*' } |
+              Select-Object -First 1
+          if (-not $xamlAppx) {
+              throw "The x64 Microsoft.UI.Xaml dependency was not found beside $($msix.FullName)."
+          }
+
+          $makeAppx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter 'MakeAppx.exe' |
+              Where-Object { $_.FullName -like '*\x64\MakeAppx.exe' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+          if (-not $makeAppx) {
+              throw 'MakeAppx.exe was not found on the runner.'
+          }
+
+          $payloadRoot = Join-Path $env:RUNNER_TEMP 'misku-package-payload'
+          New-Item -ItemType Directory -Force -Path $payloadRoot | Out-Null
+          & $makeAppx.FullName unpack /p $msix.FullName /d $payloadRoot /o
+          if ($LASTEXITCODE -ne 0) {
+              throw "MakeAppx failed to unpack $($msix.FullName)."
+          }
+
+          $requiredFiles = @(
+              'AppxManifest.xml',
+              'misku.exe',
+              'OpenConsole.exe',
+              'TerminalApp.dll',
+              'TerminalConnection.dll',
+              'resources.pri'
+          )
+          foreach ($relativePath in $requiredFiles) {
+              $runtimePath = Join-Path $payloadRoot $relativePath
+              if (-not (Test-Path -LiteralPath $runtimePath -PathType Leaf)) {
+                  throw "Required runtime file is missing: $runtimePath"
+              }
+              if ((Get-Item -LiteralPath $runtimePath).Length -eq 0) {
+                  throw "Required runtime file is empty: $runtimePath"
+              }
+          }
+
+          [xml]$manifest = Get-Content -LiteralPath (Join-Path $payloadRoot 'AppxManifest.xml') -Raw
+          if ($manifest.Package.Identity.Name -ne 'Misku.Terminal') {
+              throw "Unexpected package identity: $($manifest.Package.Identity.Name)"
+          }
+          if ($manifest.Package.Identity.Version -ne '${{ steps.version.outputs.appx_version }}') {
+              throw "Unexpected package version: $($manifest.Package.Identity.Version)"
+          }
+
+          "payload_root=$payloadRoot" >> $env:GITHUB_OUTPUT
+          "xaml_appx_path=$($xamlAppx.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Create portable artifact
+        id: package
+        shell: pwsh
+        run: |
+          $displayVersion = '${{ steps.version.outputs.display_version }}'
+          $artifactName = "MiskuTerminal-$displayVersion-x64-portable"
+          $outputRoot = Join-Path $env:GITHUB_WORKSPACE 'artifacts'
+          $zipPath = Join-Path $outputRoot "$artifactName.zip"
+          New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
+
+          $portableParameters = @{
+              TerminalLayout = '${{ steps.validate.outputs.payload_root }}'
+              XamlAppX = '${{ steps.validate.outputs.xaml_appx_path }}'
+              PortableMode = $true
+          }
+          $portableResult = .\build\scripts\New-UnpackagedTerminalDistribution.ps1 @portableParameters
+          $portableRoot = @($portableResult)[-1].FullName
+          if (-not (Test-Path -LiteralPath $portableRoot -PathType Container)) {
+              throw "Portable payload was not created: $portableRoot"
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $portableRoot '.portable') -PathType Leaf)) {
+              throw 'Portable mode marker is missing from the generated payload.'
+          }
+
+          @"
+          Misku Terminal $displayVersion (portable x64)
+
+          1. Extract the complete archive.
+          2. Run misku.exe.
+          3. Keep all DLL, PRI and resource files beside the executable.
+
+          This automated artifact is not code-signed. Windows may show a
+          SmartScreen warning until a trusted signing certificate is configured.
+          "@ | Set-Content -LiteralPath (Join-Path $portableRoot 'README.txt') -Encoding utf8
+
+          $archiveItems = Get-ChildItem -LiteralPath $portableRoot -Force |
+              ForEach-Object FullName
+          Compress-Archive -Path $archiveItems -DestinationPath $zipPath -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($zipPath))" |
+              Set-Content -LiteralPath "$zipPath.sha256" -Encoding ascii
+
+          "artifact_name=$artifactName" >> $env:GITHUB_OUTPUT
+      - name: Upload verified artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.artifact_name }}
+          path: |
+            artifacts/*.zip
+            artifacts/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_channel != 'build-only')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: dist
+
+      - name: Publish version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.build.outputs.display_version }}
+          IS_PRERELEASE: ${{ needs.build.outputs.is_prerelease }}
+        run: |
+          set -euo pipefail
+
+          asset="$(find dist -type f -name '*.zip' -print -quit)"
+          checksum="$(find dist -type f -name '*.sha256' -print -quit)"
+          test -n "$asset"
+          test -n "$checksum"
+
+          notes="Automated Misku Terminal build from commit $GITHUB_SHA.
+
+          Download the portable x64 ZIP, extract it completely and run misku.exe.
+          Verify the download with the accompanying SHA-256 file."
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release upload "$RELEASE_TAG" "$asset" "$checksum" --repo "$GITHUB_REPOSITORY" --clobber
+          elif [ "$IS_PRERELEASE" = "true" ]; then
+              args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Misku Terminal $RELEASE_VERSION" --notes "$notes")
+              gh release create "$RELEASE_TAG" "$asset" "$checksum" "${args[@]}" --prerelease
+          else
+              args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Misku Terminal $RELEASE_VERSION" --notes "$notes")
+              gh release create "$RELEASE_TAG" "$asset" "$checksum" "${args[@]}"
+          fi
