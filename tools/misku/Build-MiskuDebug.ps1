@@ -9,6 +9,8 @@ param(
     [ValidateSet('Dev', 'Release')]
     [string]$Branding = 'Dev',
 
+    [switch]$Parallel,
+
     [switch]$Clean
 )
 
@@ -49,14 +51,18 @@ $arguments = @(
     "/p:Platform=$Platform",
     "/p:WindowsTerminalBranding=$Branding",
     "/p:SolutionDir=$solutionDir",
-    '/p:MiskuLowMemoryBuild=true',
     '/p:AppxSymbolPackageEnabled=false',
-    '/m:1',
     '/v:minimal',
     "/flp:logfile=$logName.log;verbosity=normal",
     "/bl:$logName.binlog"
 )
 
+if ($Parallel) {
+    $arguments += '/m'
+} else {
+    $arguments += '/p:MiskuLowMemoryBuild=true'
+    $arguments += '/m:1'
+}
 
 Write-Host "Building Misku Terminal ($Branding branding) $Configuration $Platform..."
 Write-Host $tools.MSBuild

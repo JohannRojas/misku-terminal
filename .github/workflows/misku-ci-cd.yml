@@ -152,6 +152,7 @@ jobs:
               Platform = $env:BUILD_PLATFORM
               Configuration = $env:BUILD_CONFIGURATION
               Branding = 'Release'
+              Parallel = $true
           }
           .\tools\misku\Build-MiskuDebug.ps1 @buildParameters
 
