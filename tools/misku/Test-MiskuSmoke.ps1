@@ -111,7 +111,7 @@ $window = Get-MiskuWindowElement -TimeoutSeconds $TimeoutSeconds
 $miskuProcessId = [int]$window.Current.ProcessId
 Write-Host "Found Misku window: $($window.Current.Name) (PID $miskuProcessId)"
 
-# This check must run before any UI interaction. Otherwise opening a tab from
+# This check must run before any UI interaction. Otherwise, opening a tab from
 # the split button can mask a broken cold-start path that left the window empty.
 $initialTerminal = Wait-MiskuInitialTerminal -MiskuProcessId $miskuProcessId -TimeoutSeconds $TimeoutSeconds
 Write-Host "Initial terminal ready: $($initialTerminal.OpenConsole.Name)[$($initialTerminal.OpenConsole.ProcessId)] -> $($initialTerminal.Shell.Name)[$($initialTerminal.Shell.ProcessId)]"
