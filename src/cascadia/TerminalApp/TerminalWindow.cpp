@@ -914,6 +914,11 @@ namespace winrt::TerminalApp::implementation
     {
         if (_root)
         {
+            if (_root->TryHandleMiskuGlobalKey(vkey, scanCode, down))
+            {
+                return true;
+            }
+
             // Manually bubble the OnDirectKeyEvent event up through the focus tree.
             auto xamlRoot{ _root->XamlRoot() };
             if (!xamlRoot)

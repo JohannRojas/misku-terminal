@@ -324,6 +324,9 @@ namespace winrt::TerminalApp::implementation
         _HookupKeyBindings(_settings.ActionMap());
 
         _tabContent = this->TabContent();
+        _verticalTabsPane = this->VerticalTabsPane();
+        _verticalTabsRail = this->VerticalTabsRail();
+        _verticalTabsList = this->VerticalTabsList();
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _rearranging = false;
@@ -450,7 +453,7 @@ namespace winrt::TerminalApp::implementation
         // window will be, so they can subdivide that space.
         //
         // _OnFirstLayout will remove this handler so it doesn't get called more than once.
-        _layoutUpdatedRevoker = _tabContent.LayoutUpdated(winrt::auto_revoke, { this, &TerminalPage::_OnFirstLayout });
+        _layoutUpdatedRevoker = this->TerminalBody().LayoutUpdated(winrt::auto_revoke, { this, &TerminalPage::_OnFirstLayout });
 
         _isAlwaysOnTop = _settings.GlobalSettings().AlwaysOnTop();
         _showTabsFullscreen = _settings.GlobalSettings().ShowTabsFullscreen();
@@ -677,7 +680,15 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void TerminalPage::_OnFirstLayout(const IInspectable& /*sender*/, const IInspectable& /*eventArgs*/)
     {
-        // Only let this succeed once.
+        // TerminalBody can report an early layout before the terminal content has a
+        // usable size. Keep listening until panes can be initialized correctly.
+        if (_tabContent.ActualWidth() <= 0 || _tabContent.ActualHeight() <= 0)
+        {
+            return;
+        }
+
+        // Only let this succeed once. StartupState is the second guard in case a
+        // queued layout notification was already in flight when we revoked.
         _layoutUpdatedRevoker.revoke();
 
         // This event fires every time the layout changes, but it is always the
@@ -696,6 +707,12 @@ namespace winrt::TerminalApp::implementation
             else if (!_startupActions.empty())
             {
                 ProcessStartupActions(std::move(_startupActions));
+            }
+            else
+            {
+                // Command-line validation normally supplies a NewTab action. Keep
+                // the page usable if an activation path reaches us without one.
+                LOG_IF_FAILED(_OpenNewTab(nullptr));
             }
 
             _CompleteInitialization();
@@ -1885,8 +1902,34 @@ namespace winrt::TerminalApp::implementation
         e.Handled(true);
     }
 
+    bool TerminalPage::TryHandleMiskuGlobalKey(const uint32_t vkey, const uint8_t /*scanCode*/, const bool down)
+    {
+        const auto keyIsDown = [](const int key) noexcept { return (::GetKeyState(key) & 0x8000) != 0; };
+        const auto ctrlPressed = keyIsDown(VK_CONTROL) || keyIsDown(VK_LCONTROL) || keyIsDown(VK_RCONTROL);
+        const auto altPressed = keyIsDown(VK_MENU) || keyIsDown(VK_LMENU) || keyIsDown(VK_RMENU);
+        const auto shiftPressed = keyIsDown(VK_SHIFT) || keyIsDown(VK_LSHIFT) || keyIsDown(VK_RSHIFT);
+        const auto winPressed = keyIsDown(VK_LWIN) || keyIsDown(VK_RWIN);
+        const auto isMiskuSidebarToggle = vkey == 'B' && ctrlPressed && !altPressed && !shiftPressed && !winPressed;
+        if (!isMiskuSidebarToggle)
+        {
+            return false;
+        }
+
+        if (down)
+        {
+            _ToggleVerticalTabsVisible();
+        }
+
+        return true;
+    }
+
     bool TerminalPage::OnDirectKeyEvent(const uint32_t vkey, const uint8_t scanCode, const bool down)
     {
+        if (TryHandleMiskuGlobalKey(vkey, scanCode, down))
+        {
+            return true;
+        }
+
         const auto modifiers = _GetPressedModifierKeys();
         if (vkey == VK_SPACE && modifiers.IsAltPressed() && down)
         {
@@ -2112,6 +2155,11 @@ namespace winrt::TerminalApp::implementation
                 if (propertyName == L"Title")
                 {
                     page->_UpdateTitle(*tab);
+                    page->_RefreshVerticalTabs();
+                }
+                else if (propertyName == L"Icon" || propertyName == L"ReadOnly")
+                {
+                    page->_RefreshVerticalTabs();
                 }
                 else if (propertyName == L"Content")
                 {

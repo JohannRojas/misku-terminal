@@ -1,10 +1,23 @@
 {
-    // "defaultProfile" is filled in by CascadiaSettings, depending on
-    // what dynamic profiles are present during the first launch.
+    // "defaultProfile" is filled in by CascadiaSettings, preferring PowerShell 7+
+    // when available and falling back to Windows PowerShell otherwise.
     "copyOnSelect": false,
     "copyFormatting": false,
+    "theme": "Misku Dark",
     "profiles":
     {
+        "defaults":
+        {
+            "colorScheme": "Misku Dark",
+            "cursorShape": "bar",
+            "fontFace": "Cascadia Mono",
+            "fontSize": 12,
+            "historySize": 20000,
+            "opacity": 94,
+            "padding": "8, 8, 8, 8",
+            "startingDirectory": "%USERPROFILE%",
+            "useAcrylic": true
+        },
         "list":
         [
             {
@@ -17,7 +30,7 @@
                 // "name" is filled in by CascadiaSettings as a localized string.
                 "guid": "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}",
                 "commandline": "%SystemRoot%\\System32\\cmd.exe",
-                "hidden": false
+                "hidden": true
             }
         ]
     },
@@ -25,6 +38,12 @@
     [
         { "id": "Terminal.CopyToClipboard", "keys": "ctrl+c" },
         { "id": "Terminal.PasteFromClipboard", "keys": "ctrl+v" },
-        { "id": "Terminal.DuplicatePaneAuto", "keys": "alt+shift+d" }
+        { "id": "Terminal.OpenNewTab", "keys": "ctrl+shift+t" },
+        { "id": "Terminal.CloseTab", "keys": "ctrl+shift+w" },
+        { "id": "Terminal.SplitPaneRight", "keys": "ctrl+shift+d" },
+        { "id": "Terminal.SplitPaneDown", "keys": "ctrl+shift+e" },
+        { "id": "Terminal.ToggleCommandPalette", "keys": "ctrl+shift+p" },
+        { "id": "Terminal.OpenSettingsFile", "keys": "ctrl+shift+," },
+        { "id": "Terminal.ToggleFullscreen", "keys": "f11" }
     ]
 }
