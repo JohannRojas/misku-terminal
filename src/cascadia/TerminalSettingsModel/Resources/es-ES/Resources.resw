@@ -750,6 +750,21 @@
   <data name="WorkspacesCommandKey" xml:space="preserve">
     <value>Áreas de trabajo...</value>
   </data>
+  <data name="CreateSessionCommandKey" xml:space="preserve">
+    <value>Crear sesión</value>
+  </data>
+  <data name="CloseSessionCommandKey" xml:space="preserve">
+    <value>Cerrar sesión</value>
+  </data>
+  <data name="NextSessionCommandKey" xml:space="preserve">
+    <value>Cambiar a la sesión siguiente</value>
+  </data>
+  <data name="PrevSessionCommandKey" xml:space="preserve">
+    <value>Cambiar a la sesión anterior</value>
+  </data>
+  <data name="ToggleSessionSidebarCommandKey" xml:space="preserve">
+    <value>Mostrar u ocultar la barra lateral de sesiones</value>
+  </data>
   <data name="CloseTab" xml:space="preserve">
     <value>Cerrar pestaña</value>
   </data>

@@ -7,6 +7,7 @@
     "initialRows": 30,
     "launchMode": "default",
     "alwaysOnTop": false,
+    "firstWindowPreference": "persistedLayout",
 
     // Selection
     "copyOnSelect": false,
@@ -544,6 +545,13 @@
         { "command": "openCWD", "id": "Terminal.OpenCWD" },
         { "command": "workspaces", "id": "Terminal.Workspaces" },
 
+        // Session Management
+        { "command": "createSession", "id": "Terminal.CreateSession" },
+        { "command": "closeSession", "id": "Terminal.CloseSession" },
+        { "command": "nextSession", "id": "Terminal.NextSession" },
+        { "command": "prevSession", "id": "Terminal.PrevSession" },
+        { "command": "toggleSessionSidebar", "id": "Terminal.ToggleSessionSidebar" },
+
         // Tab Management
         // "command": "closeTab" is unbound by default.
         //   The closeTab command closes a tab without confirmation, even if it has multiple panes.
@@ -737,7 +745,7 @@
         // Tab Management
         // "command": "closeTab" is unbound by default.
         //   The closeTab command closes a tab without confirmation, even if it has multiple panes.
-        { "keys": "ctrl+shift+t", "id": "Terminal.OpenNewTab" },
+        { "keys": "ctrl+t", "id": "Terminal.OpenNewTab" },
         { "keys": "ctrl+shift+n", "id": "Terminal.OpenNewWindow" },
         { "keys": "ctrl+shift+1", "id": "Terminal.OpenNewTabProfile0" },
         { "keys": "ctrl+shift+2", "id": "Terminal.OpenNewTabProfile1" },
@@ -761,7 +769,14 @@
         { "keys": "ctrl+alt+8", "id": "Terminal.SwitchToTab7" },
         { "keys": "ctrl+alt+9", "id": "Terminal.SwitchToLastTab" },
 
+        // Session Management
+        { "keys": "ctrl+shift+t", "id": "Terminal.CreateSession" },
+        { "keys": "ctrl+alt+pgdn", "id": "Terminal.NextSession" },
+        { "keys": "ctrl+alt+pgup", "id": "Terminal.PrevSession" },
+        { "keys": "ctrl+b", "id": "Terminal.ToggleSessionSidebar" },
+
         // Pane Management
+        { "keys": "ctrl+w", "id": "Terminal.ClosePane" },
         { "keys": "ctrl+shift+w", "id": "Terminal.ClosePane" },
         { "keys": "alt+shift+-", "id": "Terminal.DuplicatePaneDown" },
         { "keys": "alt+shift+plus", "id": "Terminal.DuplicatePaneRight" },

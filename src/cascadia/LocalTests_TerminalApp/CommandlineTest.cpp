@@ -60,6 +60,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ParseFocusPaneArgs);
 
         TEST_METHOD(ParseNoCommandIsNewTab);
+        TEST_METHOD(ParseSessionCommands);
 
         TEST_METHOD(ValidateFirstCommandIsNewTab);
 
@@ -1035,6 +1036,45 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NULL(terminalArgs.ProfileIndex());
             VERIFY_IS_TRUE(terminalArgs.Profile().empty());
             VERIFY_ARE_EQUAL(L"powershell.exe \"This is an arg with spaces\"", terminalArgs.Commandline());
+        }
+    }
+
+    void CommandlineTest::ParseSessionCommands()
+    {
+        {
+            AppCommandlineArgs appArgs{};
+            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-session" };
+            _buildCommandlinesHelper(appArgs, 1u, rawCommands);
+
+            // A new session creates its own first tab, so validation must not
+            // prepend a separate NewTab action.
+            VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
+            VERIFY_ARE_EQUAL(ShortcutAction::CreateSession, appArgs._startupActions.at(0).Action());
+            VERIFY_IS_TRUE(appArgs.GetTargetWindow() == "0");
+        }
+        {
+            AppCommandlineArgs appArgs{};
+            std::vector<const wchar_t*> rawCommands{
+                L"wt.exe",
+                L"close-tab",
+                L";",
+                L"close-session",
+                L";",
+                L"next-session",
+                L";",
+                L"previous-session",
+                L";",
+                L"toggle-session-sidebar"
+            };
+            _buildCommandlinesHelper(appArgs, 5u, rawCommands);
+
+            VERIFY_ARE_EQUAL(5u, appArgs._startupActions.size());
+            VERIFY_ARE_EQUAL(ShortcutAction::CloseTab, appArgs._startupActions.at(0).Action());
+            VERIFY_ARE_EQUAL(ShortcutAction::CloseSession, appArgs._startupActions.at(1).Action());
+            VERIFY_ARE_EQUAL(ShortcutAction::NextSession, appArgs._startupActions.at(2).Action());
+            VERIFY_ARE_EQUAL(ShortcutAction::PrevSession, appArgs._startupActions.at(3).Action());
+            VERIFY_ARE_EQUAL(ShortcutAction::ToggleSessionSidebar, appArgs._startupActions.at(4).Action());
+            VERIFY_IS_TRUE(appArgs.GetTargetWindow() == "0");
         }
     }
 
