@@ -28,6 +28,7 @@ namespace TerminalApp
         void PressButton(CaptionButton button);
         void ClickButton(CaptionButton button);
         void ReleaseButtons();
+        void SetNonClientPointerOver(Boolean pointerOver);
         Single CaptionButtonWidth { get; };
         Boolean Focused { get; set; };
 

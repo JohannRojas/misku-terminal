@@ -13,6 +13,10 @@
       VerticalAlignment="Top"
       d:DesignHeight="36"
       d:DesignWidth="400"
+      GotFocus="Root_GotFocus"
+      LostFocus="Root_LostFocus"
+      PointerEntered="Root_PointerEntered"
+      PointerExited="Root_PointerExited"
       SizeChanged="Root_SizeChanged"
       mc:Ignorable="d">
 

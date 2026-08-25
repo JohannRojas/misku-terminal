@@ -16,6 +16,7 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine ClickButton(CaptionButton button);
         void ReleaseButtons();
         float CaptionButtonWidth();
+        void SetNonClientPointerOver(bool pointerOver);
 
         bool Focused();
         void Focused(bool focused);
@@ -25,6 +26,10 @@ namespace winrt::TerminalApp::implementation
 
         void SetWindowVisualState(WindowVisualState visualState);
         void Root_SizeChanged(const IInspectable& sender, const Windows::UI::Xaml::SizeChangedEventArgs& e);
+        void Root_PointerEntered(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void Root_PointerExited(const IInspectable& sender, const Windows::UI::Xaml::Input::PointerRoutedEventArgs& e);
+        void Root_GotFocus(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& e);
+        void Root_LostFocus(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& e);
         void FullscreenChanged(const bool fullscreen);
 
         void Minimize_Click(const winrt::Windows::Foundation::IInspectable& sender, const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
@@ -36,7 +41,13 @@ namespace winrt::TerminalApp::implementation
         void _OnMaximizeOrRestore(byte flag);
         HWND _window{ nullptr }; // non-owning handle; should not be freed in the dtor.
 
+        bool _xamlPointerOver{ false };
+        bool _nonClientPointerOver{ false };
+        bool _keyboardFocusWithin{ false };
+        bool _chromeVisible{ true };
+
         void _backgroundChanged(winrt::Windows::UI::Xaml::Media::Brush brush);
+        void _updateAutoHideState();
     };
 }
 

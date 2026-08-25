@@ -20,6 +20,11 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
 
+        // Keep the hit-testable titlebar in the layout while hiding its
+        // presentation. The invisible surface still supports window dragging,
+        // caption button hit testing, and revealing the controls on hover.
+        _updateAutoHideState();
+
         // Register our event handlers on the MMC buttons.
         MinMaxCloseControl().MinimizeClick({ this, &TitlebarControl::Minimize_Click });
         MinMaxCloseControl().MaximizeClick({ this, &TitlebarControl::Maximize_Click });
@@ -61,6 +66,14 @@ namespace winrt::TerminalApp::implementation
     void TitlebarControl::Focused(bool focused)
     {
         MinMaxCloseControl().Focused(focused);
+
+        if (!focused)
+        {
+            _xamlPointerOver = false;
+            _nonClientPointerOver = false;
+            _keyboardFocusWithin = false;
+            _updateAutoHideState();
+        }
     }
 
     IInspectable TitlebarControl::Content()
@@ -85,6 +98,50 @@ namespace winrt::TerminalApp::implementation
         if (maxWidth >= 0)
         {
             ContentRoot().MaxWidth(maxWidth);
+        }
+    }
+
+    void TitlebarControl::Root_PointerEntered(const IInspectable& /*sender*/,
+                                              const Windows::UI::Xaml::Input::PointerRoutedEventArgs& /*e*/)
+    {
+        _xamlPointerOver = true;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::Root_PointerExited(const IInspectable& /*sender*/,
+                                             const Windows::UI::Xaml::Input::PointerRoutedEventArgs& /*e*/)
+    {
+        _xamlPointerOver = false;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::Root_GotFocus(const IInspectable& /*sender*/,
+                                        const Windows::UI::Xaml::RoutedEventArgs& /*e*/)
+    {
+        _keyboardFocusWithin = true;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::Root_LostFocus(const IInspectable& /*sender*/,
+                                         const Windows::UI::Xaml::RoutedEventArgs& /*e*/)
+    {
+        _keyboardFocusWithin = false;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::SetNonClientPointerOver(bool pointerOver)
+    {
+        _nonClientPointerOver = pointerOver;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::_updateAutoHideState()
+    {
+        const auto shouldShow = _xamlPointerOver || _nonClientPointerOver || _keyboardFocusWithin;
+        if (_chromeVisible != shouldShow)
+        {
+            _chromeVisible = shouldShow;
+            Opacity(shouldShow ? 1.0 : 0.0);
         }
     }
 
