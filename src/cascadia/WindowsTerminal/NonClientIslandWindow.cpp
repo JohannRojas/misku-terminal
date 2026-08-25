@@ -107,6 +107,16 @@ void NonClientIslandWindow::MakeWindow() noexcept
 LRESULT NonClientIslandWindow::_dragBarNcHitTest(const til::point pointer)
 {
     auto rcParent = GetWindowRect();
+
+    // The collapsed reveal strip is only for reopening the chrome. Do not
+    // expose invisible caption buttons while the titlebar is hidden.
+    if (!_titlebar.ChromeVisible())
+    {
+        const auto resizeBorderHeight = _GetResizeHandleHeight();
+        const auto isOnResizeBorder = pointer.y < rcParent.top + resizeBorderHeight;
+        return isOnResizeBorder ? HTTOP : HTCAPTION;
+    }
+
     // The size of the buttons doesn't change over the life of the application.
     const auto buttonWidthInDips{ _titlebar.CaptionButtonWidth() };
 
@@ -446,6 +456,17 @@ int NonClientIslandWindow::_GetTopBorderHeight() const noexcept
 
 til::rect NonClientIslandWindow::_GetDragAreaRect() const noexcept
 {
+    if (_titlebar && !_titlebar.ChromeVisible())
+    {
+        const auto scale = GetCurrentDpiScale();
+        return {
+            0,
+            0,
+            gsl::narrow_cast<til::CoordType>(_rootGrid.ActualWidth() * scale),
+            gsl::narrow_cast<til::CoordType>(_titlebar.AutoHideRevealHeight() * scale),
+        };
+    }
+
     if (_dragBar && _dragBar.Visibility() == Visibility::Visible)
     {
         const auto scale = GetCurrentDpiScale();

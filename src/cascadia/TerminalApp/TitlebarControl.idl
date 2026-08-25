@@ -30,6 +30,8 @@ namespace TerminalApp
         void ReleaseButtons();
         void SetNonClientPointerOver(Boolean pointerOver);
         Single CaptionButtonWidth { get; };
+        Single AutoHideRevealHeight { get; };
+        Boolean ChromeVisible { get; };
         Boolean Focused { get; set; };
 
         IInspectable Content;

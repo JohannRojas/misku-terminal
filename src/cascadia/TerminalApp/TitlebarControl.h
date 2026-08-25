@@ -16,6 +16,8 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine ClickButton(CaptionButton button);
         void ReleaseButtons();
         float CaptionButtonWidth();
+        float AutoHideRevealHeight();
+        bool ChromeVisible();
         void SetNonClientPointerOver(bool pointerOver);
 
         bool Focused();
@@ -45,8 +47,10 @@ namespace winrt::TerminalApp::implementation
         bool _nonClientPointerOver{ false };
         bool _keyboardFocusWithin{ false };
         bool _chromeVisible{ true };
+        SafeDispatcherTimer _hideTimer;
 
         void _backgroundChanged(winrt::Windows::UI::Xaml::Media::Brush brush);
+        void _setChromeVisible(bool visible);
         void _updateAutoHideState();
     };
 }
