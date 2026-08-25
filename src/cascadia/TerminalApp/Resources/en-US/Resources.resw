@@ -334,6 +334,24 @@
   <data name="CmdNewTabDesc" xml:space="preserve">
     <value>Create a new tab</value>
   </data>
+  <data name="CmdCloseTabDesc" xml:space="preserve">
+    <value>Close the active tab</value>
+  </data>
+  <data name="CmdNewSessionDesc" xml:space="preserve">
+    <value>Create a session and open its first tab</value>
+  </data>
+  <data name="CmdCloseSessionDesc" xml:space="preserve">
+    <value>Close the active session</value>
+  </data>
+  <data name="CmdNextSessionDesc" xml:space="preserve">
+    <value>Switch to the next session</value>
+  </data>
+  <data name="CmdPreviousSessionDesc" xml:space="preserve">
+    <value>Switch to the previous session</value>
+  </data>
+  <data name="CmdToggleSessionSidebarDesc" xml:space="preserve">
+    <value>Show or hide the session sidebar</value>
+  </data>
   <data name="CmdNTDesc" xml:space="preserve">
     <value>An alias for the "new-tab" subcommand.</value>
     <comment>{Locked="\"new-tab\""}</comment>
@@ -999,5 +1017,46 @@
   </data>
   <data name="InvalidRegex" xml:space="preserve">
     <value>An invalid regular expression was found.</value>
+  </data>
+  <data name="SessionSidebarTitle.Text" xml:space="preserve">
+    <value>SESSIONS</value>
+    <comment>Heading for the sidebar that groups tabs by objective.</comment>
+  </data>
+  <data name="NewSessionButtonLabel.Text" xml:space="preserve">
+    <value>New session</value>
+  </data>
+  <data name="NewSessionButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Create a new session</value>
+  </data>
+  <data name="NewSessionButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Create a session and open its first tab</value>
+  </data>
+  <data name="SessionSidebarHint.Text" xml:space="preserve">
+    <value>Ctrl+T tab • Ctrl+Shift+T session • Ctrl+B sidebar</value>
+  </data>
+  <data name="SessionDefaultName" xml:space="preserve">
+    <value>Session {0}</value>
+    <comment>{locked="{0}"}{0} is the session number.</comment>
+  </data>
+  <data name="RenameSessionMenuItem" xml:space="preserve">
+    <value>Rename session</value>
+  </data>
+  <data name="MoveActiveTabToSessionMenuItem" xml:space="preserve">
+    <value>Move active tab here</value>
+  </data>
+  <data name="CloseSessionMenuItem" xml:space="preserve">
+    <value>Close session</value>
+  </data>
+  <data name="RenameSessionDialog.Title" xml:space="preserve">
+    <value>Rename session</value>
+  </data>
+  <data name="RenameSessionDialog.PrimaryButtonText" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="RenameSessionDialog.CloseButtonText" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="RenameSessionTextBox.Header" xml:space="preserve">
+    <value>Session name</value>
   </data>
 </root>

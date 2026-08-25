@@ -324,9 +324,19 @@ namespace winrt::TerminalApp::implementation
         _HookupKeyBindings(_settings.ActionMap());
 
         _tabContent = this->TabContent();
+        _mainContentGrid = this->MainContentGrid();
+        _sessionList = this->SessionList();
+        _newSessionButton = this->NewSessionButton();
+        _sessionCountText = this->SessionCountText();
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _rearranging = false;
+
+        _EnsureDefaultSession();
+        _SetSessionSidebarVisible(_isSessionSidebarVisible);
+        _newSessionButton.Click({ get_weak(), &TerminalPage::_NewSessionButtonOnClick });
+        _sessionList.SelectionChanged({ get_weak(), &TerminalPage::_SessionListSelectionChanged });
+        _RefreshSessionSidebar();
 
         const auto canDragDrop = CanDragDrop();
 
@@ -358,10 +368,12 @@ namespace winrt::TerminalApp::implementation
             // Remove the TabView from the page. We'll hang on to it, we need to
             // put it in the titlebar.
             uint32_t index = 0;
-            if (this->Root().Children().IndexOf(_tabRow, index))
+            if (_mainContentGrid.Children().IndexOf(_tabRow, index))
             {
-                this->Root().Children().RemoveAt(index);
+                _mainContentGrid.Children().RemoveAt(index);
             }
+
+            _tabRow.Margin(ThicknessHelper::FromLengths(_isSessionSidebarVisible ? SessionSidebarWidth : 0.0, 0, 0, 0));
 
             // Inform the host that our titlebar content has changed.
             SetTitleBarContent.raise(*this, _tabRow);
@@ -509,18 +521,18 @@ namespace winrt::TerminalApp::implementation
             // Only new terminal panes will be requesting elevation.
             NewTerminalArgs newTerminalArgs{ nullptr };
 
-            if (action.Action() == ShortcutAction::NewTab)
+            if (action.Action() == ShortcutAction::NewTab || action.Action() == ShortcutAction::CreateSession)
             {
-                const auto& args{ action.Args().try_as<NewTabArgs>() };
-                if (args)
+                if (action.Action() == ShortcutAction::NewTab)
                 {
-                    newTerminalArgs = args.ContentArgs().try_as<NewTerminalArgs>();
+                    const auto& args{ action.Args().try_as<NewTabArgs>() };
+                    if (args)
+                    {
+                        newTerminalArgs = args.ContentArgs().try_as<NewTerminalArgs>();
+                    }
                 }
-                else
-                {
-                    // This was a nt action that didn't have any args. The default
-                    // profile may want to be elevated, so don't just early return.
-                }
+                // CreateSession always opens the default profile, so a null
+                // NewTerminalArgs is exactly what GetProfileForArgs needs.
             }
             else if (action.Action() == ShortcutAction::SplitPane)
             {
@@ -587,8 +599,11 @@ namespace winrt::TerminalApp::implementation
 
         for (const auto& action : _startupActions)
         {
-            // only process new tabs and split panes. They're all going to the elevated window anyways.
-            if (action.Action() == ShortcutAction::NewTab || action.Action() == ShortcutAction::SplitPane)
+            // Only process actions that create terminal content. They're all
+            // going to the elevated window anyway.
+            if (action.Action() == ShortcutAction::NewTab ||
+                action.Action() == ShortcutAction::SplitPane ||
+                action.Action() == ShortcutAction::CreateSession)
             {
                 _actionDispatch->DoAction(action);
             }
@@ -823,6 +838,16 @@ namespace winrt::TerminalApp::implementation
     safe_void_coroutine TerminalPage::_CompleteInitialization()
     {
         _startupState = StartupState::Initialized;
+
+        if (_startupActiveTabSessionId && _GetSessionIndex(*_startupActiveTabSessionId))
+        {
+            _activeTabSessionId = *_startupActiveTabSessionId;
+            _ApplySessionVisibility(false);
+            _RefreshSessionSidebar();
+        }
+        _startupActiveTabSessionId.reset();
+        _startupTabSessionIndices.clear();
+        _startupTabSessionCursor = 0;
 
         // GH#632 - It's possible that the user tried to create the terminal
         // with only one tab, with only an elevated profile. If that happens,
@@ -2360,6 +2385,33 @@ namespace winrt::TerminalApp::implementation
         WindowLayout layout;
         layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
 
+        std::unordered_map<uint32_t, uint32_t> sessionIndices;
+        std::vector<winrt::hstring> sessionNames;
+        sessionNames.reserve(_tabSessions.size());
+        for (uint32_t i = 0; i < _tabSessions.size(); ++i)
+        {
+            sessionIndices.emplace(_tabSessions[i].Id, i);
+            sessionNames.push_back(_tabSessions[i].Name);
+        }
+
+        std::vector<uint32_t> tabSessionIndices;
+        tabSessionIndices.reserve(tabCount);
+        for (const auto& tab : _tabs)
+        {
+            const auto sessionId = _GetSessionForTab(tab).value_or(_activeTabSessionId);
+            const auto found = sessionIndices.find(sessionId);
+            tabSessionIndices.push_back(found == sessionIndices.end() ? 0u : found->second);
+        }
+
+        layout.SessionNames(winrt::single_threaded_vector<winrt::hstring>(std::move(sessionNames)));
+        layout.TabSessionIndices(winrt::single_threaded_vector<uint32_t>(std::move(tabSessionIndices)));
+        if (const auto activeSessionIndex = sessionIndices.find(_activeTabSessionId);
+            activeSessionIndex != sessionIndices.end())
+        {
+            layout.ActiveSessionIndex({ activeSessionIndex->second });
+        }
+        layout.SessionSidebarVisible({ _isSessionSidebarVisible });
+
         auto mode = LaunchMode::DefaultMode;
         WI_SetFlagIf(mode, LaunchMode::FullscreenMode, _isFullscreen);
         WI_SetFlagIf(mode, LaunchMode::FocusMode, _isInFocusMode);
@@ -2766,8 +2818,28 @@ namespace winrt::TerminalApp::implementation
             if (tabIndex)
             {
                 const auto currentTabIndex = tabIndex.value();
-                const auto delta = direction == MoveTabDirection::Forward ? 1 : -1;
-                _TryMoveTab(currentTabIndex, currentTabIndex + delta);
+                const auto sessionId = _GetSessionForTab(*tab).value_or(_activeTabSessionId);
+                std::vector<uint32_t> sessionTabIndices;
+                for (uint32_t i = 0; i < _tabs.Size(); ++i)
+                {
+                    if (_GetSessionForTab(_tabs.GetAt(i)).value_or(_activeTabSessionId) == sessionId)
+                    {
+                        sessionTabIndices.push_back(i);
+                    }
+                }
+
+                const auto current = std::find(sessionTabIndices.begin(), sessionTabIndices.end(), currentTabIndex);
+                if (current != sessionTabIndices.end())
+                {
+                    if (direction == MoveTabDirection::Forward && std::next(current) != sessionTabIndices.end())
+                    {
+                        _TryMoveTab(currentTabIndex, *std::next(current));
+                    }
+                    else if (direction == MoveTabDirection::Backward && current != sessionTabIndices.begin())
+                    {
+                        _TryMoveTab(currentTabIndex, *std::prev(current));
+                    }
+                }
             }
         }
 
@@ -4186,6 +4258,54 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::SetStartupActions(std::vector<ActionAndArgs> actions)
     {
         _startupActions = std::move(actions);
+    }
+
+    void TerminalPage::SetStartupSessionLayout(const WindowLayout& layout)
+    {
+        const auto sessionNames = layout.SessionNames();
+        const auto tabSessionIndices = layout.TabSessionIndices();
+        if (!sessionNames || sessionNames.Size() == 0 || !tabSessionIndices)
+        {
+            return;
+        }
+
+        std::vector<uint32_t> restoredIndices;
+        restoredIndices.reserve(tabSessionIndices.Size());
+        for (const auto index : tabSessionIndices)
+        {
+            if (index >= sessionNames.Size())
+            {
+                return;
+            }
+            restoredIndices.push_back(index);
+        }
+
+        _tabSessions.clear();
+        _tabSessionIds.clear();
+        _sessionSidebarItems.clear();
+        _nextTabSessionId = 1;
+        for (const auto& storedName : sessionNames)
+        {
+            const auto sessionId = _nextTabSessionId++;
+            const auto name = storedName.empty() ? winrt::hstring{ RS_fmt(L"SessionDefaultName", sessionId) } : storedName;
+            _tabSessions.push_back(TabSessionState{ sessionId, name });
+        }
+
+        uint32_t activeIndex = 0;
+        if (const auto storedActiveIndex = layout.ActiveSessionIndex();
+            storedActiveIndex && storedActiveIndex.Value() < _tabSessions.size())
+        {
+            activeIndex = storedActiveIndex.Value();
+        }
+        _activeTabSessionId = _tabSessions[activeIndex].Id;
+        _startupActiveTabSessionId = _activeTabSessionId;
+        _startupTabSessionIndices = std::move(restoredIndices);
+        _startupTabSessionCursor = 0;
+
+        if (const auto sidebarVisible = layout.SessionSidebarVisible())
+        {
+            _isSessionSidebarVisible = sidebarVisible.Value();
+        }
     }
 
     void TerminalPage::SetStartupConnection(ITerminalConnection connection)

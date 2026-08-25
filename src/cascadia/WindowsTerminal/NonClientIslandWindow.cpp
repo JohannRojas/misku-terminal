@@ -107,6 +107,16 @@ void NonClientIslandWindow::MakeWindow() noexcept
 LRESULT NonClientIslandWindow::_dragBarNcHitTest(const til::point pointer)
 {
     auto rcParent = GetWindowRect();
+
+    // The collapsed reveal strip is only for reopening the chrome. Do not
+    // expose invisible caption buttons while the titlebar is hidden.
+    if (!_titlebar.ChromeVisible())
+    {
+        const auto resizeBorderHeight = _GetResizeHandleHeight();
+        const auto isOnResizeBorder = pointer.y < rcParent.top + resizeBorderHeight;
+        return isOnResizeBorder ? HTTOP : HTCAPTION;
+    }
+
     // The size of the buttons doesn't change over the life of the application.
     const auto buttonWidthInDips{ _titlebar.CaptionButtonWidth() };
 
@@ -183,6 +193,22 @@ LRESULT NonClientIslandWindow::_InputSinkMessageHandler(UINT const message,
         // it can update its visuals.
         // - If we're over a button, hover it.
         // - If we're over _anything else_, stop hovering the buttons.
+        _titlebar.SetNonClientPointerOver(true);
+
+        // Track the entire titlebar, not just its caption buttons. The visual
+        // chrome is auto-hidden, so leaving any part of this native input sink
+        // must hide it again.
+        if (!_trackingMouse)
+        {
+            TRACKMOUSEEVENT ev{};
+            ev.cbSize = sizeof(TRACKMOUSEEVENT);
+            ev.dwFlags = TME_LEAVE | TME_NONCLIENT;
+            ev.hwndTrack = _dragBarWindow.get();
+            ev.dwHoverTime = HOVER_DEFAULT;
+            LOG_IF_WIN32_BOOL_FALSE(TrackMouseEvent(&ev));
+            _trackingMouse = true;
+        }
+
         switch (wparam)
         {
         case HTTOP:
@@ -205,32 +231,13 @@ LRESULT NonClientIslandWindow::_InputSinkMessageHandler(UINT const message,
             _titlebar.ReleaseButtons();
         }
 
-        // If we haven't previously asked for mouse tracking, request mouse
-        // tracking. We need to do this so we can get the WM_NCMOUSELEAVE
-        // message when the mouse leave the titlebar. Otherwise, we won't always
-        // get that message (especially if the user moves the mouse _real
-        // fast_).
-        if (!_trackingMouse &&
-            (wparam == HTMINBUTTON || wparam == HTMAXBUTTON || wparam == HTCLOSE))
-        {
-            TRACKMOUSEEVENT ev{};
-            ev.cbSize = sizeof(TRACKMOUSEEVENT);
-            // TME_NONCLIENT is absolutely critical here. In my experimentation,
-            // we'd get WM_MOUSELEAVE messages after just a HOVER_DEFAULT
-            // timeout even though we're not requesting TME_HOVER, which kinda
-            // ruined the whole point of this.
-            ev.dwFlags = TME_LEAVE | TME_NONCLIENT;
-            ev.hwndTrack = _dragBarWindow.get();
-            ev.dwHoverTime = HOVER_DEFAULT; // we don't _really_ care about this.
-            LOG_IF_WIN32_BOOL_FALSE(TrackMouseEvent(&ev));
-            _trackingMouse = true;
-        }
         break;
 
     case WM_NCMOUSELEAVE:
     case WM_MOUSELEAVE:
         // When the mouse leaves the drag rect, make sure to dismiss any hover.
         _titlebar.ReleaseButtons();
+        _titlebar.SetNonClientPointerOver(false);
         _trackingMouse = false;
         break;
 
@@ -449,6 +456,17 @@ int NonClientIslandWindow::_GetTopBorderHeight() const noexcept
 
 til::rect NonClientIslandWindow::_GetDragAreaRect() const noexcept
 {
+    if (_titlebar && !_titlebar.ChromeVisible())
+    {
+        const auto scale = GetCurrentDpiScale();
+        return {
+            0,
+            0,
+            gsl::narrow_cast<til::CoordType>(_rootGrid.ActualWidth() * scale),
+            gsl::narrow_cast<til::CoordType>(_titlebar.AutoHideRevealHeight() * scale),
+        };
+    }
+
     if (_dragBar && _dragBar.Visibility() == Visibility::Visible)
     {
         const auto scale = GetCurrentDpiScale();

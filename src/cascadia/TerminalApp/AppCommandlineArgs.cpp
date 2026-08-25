@@ -208,7 +208,34 @@ void AppCommandlineArgs::_buildParser()
     _buildMovePaneParser();
     _buildSwapPaneParser();
     _buildFocusPaneParser();
+    _buildSessionParser();
     _buildSaveSnippetParser();
+}
+
+void AppCommandlineArgs::_buildSessionParser()
+{
+    const auto setupSubcommand = [this](CLI::App*& command,
+                                        const std::string& name,
+                                        const std::string& description,
+                                        const ShortcutAction action) {
+        command = _app.add_subcommand(name, description);
+        command->callback([this, action]() {
+            _startupActions.emplace_back(action, nullptr);
+        });
+    };
+
+    _closeTabCommand = _app.add_subcommand("close-tab", RS_A(L"CmdCloseTabDesc"));
+    _closeTabCommand->callback([this]() {
+        _startupActions.emplace_back(
+            ShortcutAction::CloseTab,
+            ActionArgFactory::GetEmptyArgsForAction(ShortcutAction::CloseTab));
+    });
+
+    setupSubcommand(_newSessionCommand, "new-session", RS_A(L"CmdNewSessionDesc"), ShortcutAction::CreateSession);
+    setupSubcommand(_closeSessionCommand, "close-session", RS_A(L"CmdCloseSessionDesc"), ShortcutAction::CloseSession);
+    setupSubcommand(_nextSessionCommand, "next-session", RS_A(L"CmdNextSessionDesc"), ShortcutAction::NextSession);
+    setupSubcommand(_previousSessionCommand, "previous-session", RS_A(L"CmdPreviousSessionDesc"), ShortcutAction::PrevSession);
+    setupSubcommand(_toggleSessionSidebarCommand, "toggle-session-sidebar", RS_A(L"CmdToggleSessionSidebarDesc"), ShortcutAction::ToggleSessionSidebar);
 }
 
 // Method Description:
@@ -786,6 +813,12 @@ bool AppCommandlineArgs::_noCommandsProvided()
              *_focusPaneShort ||
              *_newPaneShort.subcommand ||
              *_newPaneCommand.subcommand ||
+             *_closeTabCommand ||
+             *_newSessionCommand ||
+             *_closeSessionCommand ||
+             *_nextSessionCommand ||
+             *_previousSessionCommand ||
+             *_toggleSessionSidebarCommand ||
              *_saveCommand);
 }
 
@@ -998,11 +1031,11 @@ bool AppCommandlineArgs::ShouldExitEarly() const noexcept
 }
 
 // Method Description:
-// - Ensure that the first command in our list of actions is a NewTab action.
+// - Ensure that actions which need terminal content start with a NewTab action.
 //   This makes sure that if the user passes a commandline like "wt split-pane
-//   -H", we _first_ create a new tab, so there's always at least one tab.
-// - If the first command in our queue of actions is a NewTab action, this does
-//   nothing.
+//   -H", we _first_ create a new tab, so there's always at least one tab. Tab
+//   and session control actions can operate on the current window without
+//   creating content first.
 // - This should only be called once - if the first NewTab action is popped from
 //   our _startupActions, calling this again will add another.
 // Arguments:
@@ -1020,19 +1053,41 @@ void AppCommandlineArgs::ValidateStartupCommands()
     {
         _windowTarget = "0";
     }
-    // If we parsed no commands, or the first command we've parsed is not a new
-    // tab action, prepend a new-tab command to the front of the list.
-    // (also, we don't need to do this if the only action is a x-save)
-    else if (_startupActions.empty() ||
-             (_startupActions.front().Action() != ShortcutAction::NewTab &&
-              _startupActions.front().Action() != ShortcutAction::SaveSnippet))
+    // Prepend a tab only for actions that require terminal content.
+    else
     {
-        // Build the NewTab action from the values we've parsed on the commandline.
-        NewTerminalArgs newTerminalArgs{};
-        NewTabArgs args{ newTerminalArgs };
-        ActionAndArgs newTabAction{ ShortcutAction::NewTab, args };
-        // push the arg onto the front
-        _startupActions.insert(_startupActions.begin(), 1, newTabAction);
+        const auto firstAction = _startupActions.empty() ? ShortcutAction::Invalid : _startupActions.front().Action();
+        const auto targetsExistingWindow = firstAction == ShortcutAction::CreateSession ||
+                                           firstAction == ShortcutAction::CloseTab ||
+                                           firstAction == ShortcutAction::CloseSession ||
+                                           firstAction == ShortcutAction::NextSession ||
+                                           firstAction == ShortcutAction::PrevSession ||
+                                           firstAction == ShortcutAction::ToggleSessionSidebar;
+        if (targetsExistingWindow && _windowTarget.empty())
+        {
+            // Session and tab-control commands are most useful against the
+            // current terminal. Target the MRU window by default while still
+            // honoring an explicit `-w` supplied by the caller.
+            _windowTarget = "0";
+        }
+
+        const auto canRunWithoutPrependingTab = firstAction == ShortcutAction::NewTab ||
+                                                 firstAction == ShortcutAction::CreateSession ||
+                                                 firstAction == ShortcutAction::CloseTab ||
+                                                firstAction == ShortcutAction::CloseSession ||
+                                                firstAction == ShortcutAction::NextSession ||
+                                                firstAction == ShortcutAction::PrevSession ||
+                                                firstAction == ShortcutAction::ToggleSessionSidebar ||
+                                                firstAction == ShortcutAction::SaveSnippet;
+        if (!canRunWithoutPrependingTab)
+        {
+            // Build the NewTab action from the values we've parsed on the commandline.
+            NewTerminalArgs newTerminalArgs{};
+            NewTabArgs args{ newTerminalArgs };
+            ActionAndArgs newTabAction{ ShortcutAction::NewTab, args };
+            // push the arg onto the front
+            _startupActions.insert(_startupActions.begin(), 1, newTabAction);
+        }
     }
 }
 std::optional<uint32_t> AppCommandlineArgs::GetPersistedLayoutIdx() const noexcept

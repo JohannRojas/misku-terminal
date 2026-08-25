@@ -75,6 +75,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
+        TEST_METHOD(MiskuSessionSidebarShortcut);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -197,6 +198,70 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(page);
         });
         VERIFY_SUCCEEDED(result);
+    }
+
+    void TabTests::MiskuSessionSidebarShortcut()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&page]() {
+            constexpr double expectedSidebarWidth{ 232.0 };
+            const auto sessionCount = page->_tabSessions.size();
+            const auto activeSessionId = page->_activeTabSessionId;
+
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->SessionSidebar().Visibility());
+            VERIFY_ARE_EQUAL(expectedSidebarWidth, page->SessionSidebarColumn().Width().Value);
+
+            const winrt::Microsoft::Terminal::Control::KeyChord ctrlB{
+                VirtualKeyModifiers::Control,
+                static_cast<int32_t>(VirtualKey::B),
+                0
+            };
+
+            VERIFY_IS_TRUE(page->_bindings->TryKeyChord(ctrlB));
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->SessionSidebar().Visibility());
+            VERIFY_ARE_EQUAL(0.0, page->SessionSidebarColumn().Width().Value);
+            VERIFY_ARE_EQUAL(sessionCount, page->_tabSessions.size());
+
+            VERIFY_IS_TRUE(page->_bindings->TryKeyChord(ctrlB));
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->SessionSidebar().Visibility());
+            VERIFY_ARE_EQUAL(expectedSidebarWidth, page->SessionSidebarColumn().Width().Value);
+            VERIFY_ARE_EQUAL(sessionCount, page->_tabSessions.size());
+
+            const auto initialTabCount = page->_tabs.Size();
+            const winrt::Microsoft::Terminal::Control::KeyChord ctrlT{
+                VirtualKeyModifiers::Control,
+                static_cast<int32_t>(VirtualKey::T),
+                0
+            };
+            VERIFY_IS_TRUE(page->_bindings->TryKeyChord(ctrlT));
+            VERIFY_ARE_EQUAL(initialTabCount + 1, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(activeSessionId,
+                             page->_GetSessionForTab(page->_tabs.GetAt(initialTabCount)).value_or(0));
+
+            const winrt::Microsoft::Terminal::Control::KeyChord ctrlShiftT{
+                VirtualKeyModifiers::Control | VirtualKeyModifiers::Shift,
+                static_cast<int32_t>(VirtualKey::T),
+                0
+            };
+            VERIFY_IS_TRUE(page->_bindings->TryKeyChord(ctrlShiftT));
+            VERIFY_ARE_EQUAL(sessionCount + 1, page->_tabSessions.size());
+            VERIFY_ARE_NOT_EQUAL(activeSessionId, page->_activeTabSessionId);
+
+            VERIFY_IS_TRUE(page->_SelectAdjacentSession(false));
+            VERIFY_ARE_EQUAL(activeSessionId, page->_activeTabSessionId);
+            VERIFY_IS_TRUE(page->_SelectAdjacentSession(true));
+            VERIFY_ARE_NOT_EQUAL(activeSessionId, page->_activeTabSessionId);
+
+            const auto layout = page->GetWindowLayout();
+            VERIFY_IS_NOT_NULL(layout);
+            VERIFY_ARE_EQUAL(2u, layout.SessionNames().Size());
+            VERIFY_ARE_EQUAL(page->_tabs.Size(), layout.TabSessionIndices().Size());
+            VERIFY_ARE_EQUAL(0u, layout.TabSessionIndices().GetAt(0));
+            VERIFY_ARE_EQUAL(1u, layout.TabSessionIndices().GetAt(layout.TabSessionIndices().Size() - 1));
+            VERIFY_ARE_EQUAL(1u, layout.ActiveSessionIndex().Value());
+            VERIFY_IS_TRUE(layout.SessionSidebarVisible().Value());
+        });
     }
 
     // Method Description:

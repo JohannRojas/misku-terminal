@@ -4,6 +4,7 @@
 #pragma once
 
 #include <ThrottledFunc.h>
+#include <unordered_map>
 
 #include "TerminalPage.g.h"
 #include "Tab.h"
@@ -43,6 +44,7 @@ namespace winrt::TerminalApp::implementation
     struct TerminalSettingsCache;
 
     inline constexpr uint32_t DefaultRowsToScroll{ 3 };
+    inline constexpr double SessionSidebarWidth{ 232.0 };
     inline constexpr std::wstring_view TabletInputServiceKey{ L"TabletInputService" };
 
     enum StartupState : int
@@ -191,6 +193,7 @@ namespace winrt::TerminalApp::implementation
         void RequestSetMaximized(bool newMaximized);
 
         void SetStartupActions(std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> actions);
+        void SetStartupSessionLayout(const Microsoft::Terminal::Settings::Model::WindowLayout& layout);
         void SetStartupConnection(winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection);
 
         static std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> ConvertExecuteCommandlineToActions(const Microsoft::Terminal::Settings::Model::ExecuteCommandlineArgs& args);
@@ -282,6 +285,10 @@ namespace winrt::TerminalApp::implementation
         Microsoft::UI::Xaml::Controls::TabView _tabView{ nullptr };
         TerminalApp::TabRowControl _tabRow{ nullptr };
         Windows::UI::Xaml::Controls::Grid _tabContent{ nullptr };
+        Windows::UI::Xaml::Controls::Grid _mainContentGrid{ nullptr };
+        Windows::UI::Xaml::Controls::ListView _sessionList{ nullptr };
+        Windows::UI::Xaml::Controls::Button _newSessionButton{ nullptr };
+        Windows::UI::Xaml::Controls::TextBlock _sessionCountText{ nullptr };
         Microsoft::UI::Xaml::Controls::SplitButton _newTabButton{ nullptr };
         Windows::UI::Xaml::Controls::MenuFlyout _workspaceFlyout{ nullptr };
         Windows::UI::Xaml::Controls::Button _workspaceDropdown{ nullptr };
@@ -292,6 +299,52 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::Collections::IObservableVector<TerminalApp::Tab> _tabs;
         Windows::Foundation::Collections::IObservableVector<TerminalApp::Tab> _mruTabs;
         static winrt::com_ptr<Tab> _GetTabImpl(const TerminalApp::Tab& tab);
+
+        struct TabSessionState
+        {
+            uint32_t Id;
+            winrt::hstring Name;
+        };
+
+        struct SessionSidebarItemState
+        {
+            Windows::UI::Xaml::Controls::ListViewItem Item{ nullptr };
+            Windows::UI::Xaml::Controls::TextBlock Title{ nullptr };
+            Windows::UI::Xaml::Controls::TextBlock Count{ nullptr };
+            Windows::UI::Xaml::Controls::MenuFlyoutItem MoveTabItem{ nullptr };
+            Windows::UI::Xaml::Controls::MenuFlyoutItem CloseItem{ nullptr };
+        };
+
+        std::vector<TabSessionState> _tabSessions;
+        std::unordered_map<uintptr_t, uint32_t> _tabSessionIds;
+        std::unordered_map<uint32_t, SessionSidebarItemState> _sessionSidebarItems;
+        uint32_t _activeTabSessionId{ 0 };
+        uint32_t _nextTabSessionId{ 1 };
+        std::vector<uint32_t> _startupTabSessionIndices;
+        size_t _startupTabSessionCursor{ 0 };
+        std::optional<uint32_t> _startupActiveTabSessionId;
+        bool _updatingSessionList{ false };
+        bool _isSessionSidebarVisible{ true };
+
+        static uintptr_t _GetTabSessionKey(const TerminalApp::Tab& tab) noexcept;
+        void _EnsureDefaultSession();
+        uint32_t _CreateSession(winrt::hstring name = {});
+        bool _CreateSessionWithNewTab();
+        bool _SelectAdjacentSession(bool moveForward);
+        void _SwitchToSession(uint32_t sessionId, bool focusTab = true);
+        void _ApplySessionVisibility(bool focusTab = true);
+        void _SetSessionSidebarVisible(bool visible);
+        void _RefreshSessionSidebar();
+        void _RemoveSessionIfEmpty(uint32_t sessionId);
+        void _MoveFocusedTabToSession(uint32_t sessionId);
+        std::optional<uint32_t> _GetSessionForTab(const TerminalApp::Tab& tab) const noexcept;
+        std::optional<size_t> _GetSessionIndex(uint32_t sessionId) const noexcept;
+        uint32_t _GetSessionTabCount(uint32_t sessionId) const noexcept;
+        TerminalApp::Tab _GetMostRecentTabInSession(uint32_t sessionId) const noexcept;
+        void _NewSessionButtonOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
+        void _SessionListSelectionChanged(const IInspectable& sender, const Windows::UI::Xaml::Controls::SelectionChangedEventArgs& eventArgs);
+        safe_void_coroutine _RenameSession(uint32_t sessionId);
+        safe_void_coroutine _CloseSession(uint32_t sessionId);
 
         void _UpdateTabIndices();
 

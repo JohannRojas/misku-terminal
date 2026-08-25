@@ -93,6 +93,12 @@ private:
     CLI::App* _focusPaneCommand;
     CLI::App* _focusPaneShort;
     CLI::App* _saveCommand;
+    CLI::App* _closeTabCommand;
+    CLI::App* _newSessionCommand;
+    CLI::App* _closeSessionCommand;
+    CLI::App* _nextSessionCommand;
+    CLI::App* _previousSessionCommand;
+    CLI::App* _toggleSessionSidebarCommand;
 
     // Are you adding a new sub-command? Make sure to update _noCommandsProvided!
 
@@ -150,6 +156,7 @@ private:
     void _buildMovePaneParser();
     void _buildSwapPaneParser();
     void _buildFocusPaneParser();
+    void _buildSessionParser();
     bool _noCommandsProvided();
     void _resetStateToDefault();
     int _handleExit(const CLI::App& command, const CLI::Error& e);

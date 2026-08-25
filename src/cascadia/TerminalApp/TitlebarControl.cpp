@@ -15,10 +15,30 @@ using namespace winrt::Windows::UI::Xaml;
 
 namespace winrt::TerminalApp::implementation
 {
+    static constexpr double expandedChromeHeight{ 40.0 };
+    static constexpr double collapsedChromeHeight{ 3.0 };
+    static constexpr auto chromeHideDelay{ std::chrono::milliseconds{ 180 } };
+
     TitlebarControl::TitlebarControl(uint64_t handle) :
         _window{ reinterpret_cast<HWND>(handle) }
     {
         InitializeComponent();
+
+        _hideTimer.Interval(chromeHideDelay);
+        _hideTimer.Tick([weakThis = get_weak()](auto&&, auto&&) {
+            if (const auto self{ weakThis.get() })
+            {
+                self->_hideTimer.Stop();
+                if (!self->_xamlPointerOver && !self->_nonClientPointerOver && !self->_keyboardFocusWithin)
+                {
+                    self->_setChromeVisible(false);
+                }
+            }
+        });
+
+        // Collapse the chrome to a narrow reveal target. Unlike opacity-only
+        // hiding, this returns the unused titlebar space to the terminal.
+        _setChromeVisible(false);
 
         // Register our event handlers on the MMC buttons.
         MinMaxCloseControl().MinimizeClick({ this, &TitlebarControl::Minimize_Click });
@@ -53,6 +73,16 @@ namespace winrt::TerminalApp::implementation
         return static_cast<float>(minMaxCloseWidth) / 3.0f;
     }
 
+    float TitlebarControl::AutoHideRevealHeight()
+    {
+        return static_cast<float>(collapsedChromeHeight);
+    }
+
+    bool TitlebarControl::ChromeVisible()
+    {
+        return _chromeVisible;
+    }
+
     bool TitlebarControl::Focused()
     {
         return MinMaxCloseControl().Focused();
@@ -61,6 +91,14 @@ namespace winrt::TerminalApp::implementation
     void TitlebarControl::Focused(bool focused)
     {
         MinMaxCloseControl().Focused(focused);
+
+        if (!focused)
+        {
+            _xamlPointerOver = false;
+            _nonClientPointerOver = false;
+            _keyboardFocusWithin = false;
+            _updateAutoHideState();
+        }
     }
 
     IInspectable TitlebarControl::Content()
@@ -85,6 +123,82 @@ namespace winrt::TerminalApp::implementation
         if (maxWidth >= 0)
         {
             ContentRoot().MaxWidth(maxWidth);
+        }
+    }
+
+    void TitlebarControl::Root_PointerEntered(const IInspectable& /*sender*/,
+                                              const Windows::UI::Xaml::Input::PointerRoutedEventArgs& /*e*/)
+    {
+        _xamlPointerOver = true;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::Root_PointerExited(const IInspectable& /*sender*/,
+                                             const Windows::UI::Xaml::Input::PointerRoutedEventArgs& /*e*/)
+    {
+        _xamlPointerOver = false;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::Root_GotFocus(const IInspectable& /*sender*/,
+                                        const Windows::UI::Xaml::RoutedEventArgs& e)
+    {
+        // Pointer focus should not pin the titlebar open after the mouse leaves.
+        // Keep keyboard navigation discoverable without changing hover behavior.
+        const auto focusedControl{ e.OriginalSource().try_as<Controls::Control>() };
+        _keyboardFocusWithin = focusedControl && focusedControl.FocusState() == FocusState::Keyboard;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::Root_LostFocus(const IInspectable& /*sender*/,
+                                         const Windows::UI::Xaml::RoutedEventArgs& /*e*/)
+    {
+        _keyboardFocusWithin = false;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::SetNonClientPointerOver(bool pointerOver)
+    {
+        _nonClientPointerOver = pointerOver;
+        _updateAutoHideState();
+    }
+
+    void TitlebarControl::_updateAutoHideState()
+    {
+        const auto shouldShow = _xamlPointerOver || _nonClientPointerOver || _keyboardFocusWithin;
+        if (shouldShow)
+        {
+            _hideTimer.Stop();
+            _setChromeVisible(true);
+        }
+        else if (_chromeVisible)
+        {
+            // Debounce the handoff between the native drag region and XAML
+            // tabs so crossing their boundary does not flicker the chrome.
+            _hideTimer.Stop();
+            _hideTimer.Start();
+        }
+    }
+
+    void TitlebarControl::_setChromeVisible(bool visible)
+    {
+        if (_chromeVisible == visible)
+        {
+            return;
+        }
+
+        _chromeVisible = visible;
+        if (visible)
+        {
+            Height(expandedChromeHeight);
+            ChromeRoot().Opacity(1.0);
+            ChromeRoot().IsHitTestVisible(true);
+        }
+        else
+        {
+            ChromeRoot().IsHitTestVisible(false);
+            ChromeRoot().Opacity(0.0);
+            Height(collapsedChromeHeight);
         }
     }
 
