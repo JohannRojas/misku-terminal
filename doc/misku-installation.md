@@ -4,7 +4,7 @@ Misku Terminal is distributed as an x64 MSIX package. Installing the package reg
 
 ## Development certificate releases
 
-Community builds are signed with a self-signed development certificate. Windows requires that certificate to be trusted before installing the MSIX:
+Community builds are signed with a self-signed development certificate. Windows requires trusting this certificate before installing the MSIX:
 
 1. Download the `.msix` and `.cer` files from the same GitHub release.
 2. Import the `.cer` file into **Local Computer > Trusted People**. This requires administrator approval.
