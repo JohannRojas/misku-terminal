@@ -1059,4 +1059,13 @@
   <data name="RenameSessionTextBox.Header" xml:space="preserve">
     <value>Session name</value>
   </data>
+  <data name="PinChromeButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Keep title bar visible</value>
+  </data>
+  <data name="PinChromeButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Keep title bar visible</value>
+  </data>
+  <data name="MiskuConfigWarningInfoBar.Title" xml:space="preserve">
+    <value>Could not apply config.misku</value>
+  </data>
 </root>

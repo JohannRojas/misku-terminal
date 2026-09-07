@@ -1001,4 +1001,7 @@
   <data name="SplitSizeActionArgumentLocalized" xml:space="preserve">
     <value>Split size</value>
   </data>
+  <data name="ReloadSettingsCommandKey" xml:space="preserve">
+    <value>Reload settings</value>
+  </data>
 </root>

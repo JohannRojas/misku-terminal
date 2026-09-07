@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "App.h"
+#include "AppLogic.h"
 
 #include "TerminalPage.h"
 #include "ScratchpadContent.h"
@@ -634,6 +635,15 @@ namespace winrt::TerminalApp::implementation
                                           const ActionEventArgs& args)
     {
         _SelectAdjacentSession(false);
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleReloadSettings(const IInspectable&, const ActionEventArgs& args)
+    {
+        if (const auto logic = AppLogic::Current())
+        {
+            logic->ReloadSettingsThrottled();
+        }
         args.Handled(true);
     }
 

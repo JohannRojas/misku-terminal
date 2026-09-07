@@ -16,7 +16,7 @@
      -->
     <AppxOSMinVersionReplaceManifestVersion>false</AppxOSMinVersionReplaceManifestVersion>
     <AppxOSMaxVersionTestedReplaceManifestVersion>false</AppxOSMaxVersionTestedReplaceManifestVersion>
-    <OCExecutionAliasName Condition="'$(WindowsTerminalBranding)'=='' or '$(WindowsTerminalBranding)'=='Dev'">misku</OCExecutionAliasName>
+    <OCExecutionAliasName>misku</OCExecutionAliasName>
     <OCExecutionAliasName Condition="'$(OCExecutionAliasName)'==''">wt</OCExecutionAliasName>
   </PropertyGroup>
   <PropertyGroup>
@@ -80,7 +80,7 @@
     <ProjectReference Include="$(OpenConsoleDir)src\cascadia\ShellExtension\WindowsTerminalShellExt.vcxproj">
       <Project>{f2ed628a-db22-446f-a081-4cc845b51a2b}</Project>
     </ProjectReference>
-    <ProjectReference Include="$(OpenConsoleDir)src\cascadia\wt\wt.vcxproj">
+    <ProjectReference Include="$(OpenConsoleDir)src\cascadia\wt\wt.vcxproj" Condition="false">
       <Project>{506fd703-baa7-4f6e-9361-64f550ec8fca}</Project>
     </ProjectReference>
     <ProjectReference Include="$(OpenConsoleDir)src\host\exe\Host.EXE.vcxproj">

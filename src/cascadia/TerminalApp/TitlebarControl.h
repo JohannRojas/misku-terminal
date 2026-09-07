@@ -18,6 +18,9 @@ namespace winrt::TerminalApp::implementation
         float CaptionButtonWidth();
         float AutoHideRevealHeight();
         bool ChromeVisible();
+        bool ChromePinned();
+        til::typed_event<Windows::Foundation::IInspectable, Windows::Foundation::IInspectable> ChromePinnedChanged;
+        void PinChrome_Click(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
         void SetNonClientPointerOver(bool pointerOver);
 
         bool Focused();
@@ -46,7 +49,8 @@ namespace winrt::TerminalApp::implementation
         bool _xamlPointerOver{ false };
         bool _nonClientPointerOver{ false };
         bool _keyboardFocusWithin{ false };
-        bool _chromeVisible{ true };
+        bool _chromeVisible{ false };
+        bool _chromePinned{ false };
         SafeDispatcherTimer _hideTimer;
 
         void _backgroundChanged(winrt::Windows::UI::Xaml::Media::Brush brush);

@@ -850,7 +850,7 @@ void AppHost::_WindowMouseWheeled(const winrt::Windows::Foundation::Point coord,
 // - Event handler for the Peasant::ExecuteCommandlineRequested event. Take the
 //   provided commandline args, and attempt to parse them and perform the
 //   actions immediately. The parsing is performed by AppLogic.
-// - This is invoked when another wt.exe instance runs something like `wt -w 1
+// - This is invoked when another misku.exe instance runs something like `misku -w 1
 //   new-tab`, and the Monarch delegates the commandline to this instance.
 // Arguments:
 // - args: the bundle of a commandline and working directory to use for this invocation.

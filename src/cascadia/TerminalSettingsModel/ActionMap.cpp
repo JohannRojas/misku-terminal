@@ -164,6 +164,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 { ShortcutAction::ToggleFocusMode, USES_RESOURCE(L"ToggleFocusModeCommandKey") },
                 { ShortcutAction::ToggleFullscreen, USES_RESOURCE(L"ToggleFullscreenCommandKey") },
                 { ShortcutAction::TogglePaneReadOnly, USES_RESOURCE(L"TogglePaneReadOnlyCommandKey") },
+                { ShortcutAction::ReloadSettings, USES_RESOURCE(L"ReloadSettingsCommandKey") },
                 { ShortcutAction::ToggleSessionSidebar, USES_RESOURCE(L"ToggleSessionSidebarCommandKey") },
                 { ShortcutAction::TogglePaneZoom, USES_RESOURCE(L"TogglePaneZoomCommandKey") },
                 { ShortcutAction::ToggleShaderEffects, USES_RESOURCE(L"ToggleShaderEffectsCommandKey") },

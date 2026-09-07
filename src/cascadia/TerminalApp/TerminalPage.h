@@ -599,6 +599,7 @@ namespace winrt::TerminalApp::implementation
                                         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection existingConnection = nullptr);
 
         void _RefreshUIForSettingsReload();
+        void _RefreshMiskuConfigWarning();
 
         void _SetNewTabButtonColor(til::color color, til::color accentColor);
         void _ClearNewTabButtonColor();

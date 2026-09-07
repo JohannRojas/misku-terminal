@@ -120,6 +120,7 @@
     ON_ALL_ACTIONS(CloseSession)            \
     ON_ALL_ACTIONS(NextSession)             \
     ON_ALL_ACTIONS(PrevSession)             \
+    ON_ALL_ACTIONS(ReloadSettings)          \
     ON_ALL_ACTIONS(ToggleSessionSidebar)
 
 #define ALL_SHORTCUT_ACTIONS_WITH_ARGS             \

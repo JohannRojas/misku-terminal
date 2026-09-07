@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -1058,5 +1058,14 @@
   </data>
   <data name="RenameSessionTextBox.Header" xml:space="preserve">
     <value>Nombre de la sesión</value>
+  </data>
+  <data name="PinChromeButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Mantener visible la barra superior</value>
+  </data>
+  <data name="PinChromeButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Mantener visible la barra superior</value>
+  </data>
+  <data name="MiskuConfigWarningInfoBar.Title" xml:space="preserve">
+    <value>No se pudo aplicar config.misku</value>
   </data>
 </root>

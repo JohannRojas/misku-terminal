@@ -8,7 +8,7 @@
 #include <shlobj.h>
 #include <WtExeUtils.h>
 
-static constexpr std::wstring_view UnpackagedSettingsFolderName{ L"Microsoft\\Windows Terminal\\" };
+static constexpr std::wstring_view UnpackagedSettingsFolderName{ L"MiskuTerminal\\" };
 static constexpr std::wstring_view ReleaseSettingsFolder{ L"Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState\\" };
 static constexpr std::wstring_view PortableModeMarkerFile{ L".portable" };
 static constexpr std::wstring_view PortableModeSettingsFolder{ L"settings" };

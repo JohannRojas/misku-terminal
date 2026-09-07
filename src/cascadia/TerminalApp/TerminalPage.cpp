@@ -328,6 +328,7 @@ namespace winrt::TerminalApp::implementation
         _sessionList = this->SessionList();
         _newSessionButton = this->NewSessionButton();
         _sessionCountText = this->SessionCountText();
+        _RefreshMiskuConfigWarning();
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
         _rearranging = false;
@@ -692,6 +693,11 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void TerminalPage::_OnFirstLayout(const IInspectable& /*sender*/, const IInspectable& /*eventArgs*/)
     {
+        if (_tabContent.ActualWidth() <= 0 || _tabContent.ActualHeight() <= 0)
+        {
+            return;
+        }
+
         // Only let this succeed once.
         _layoutUpdatedRevoker.revoke();
 
@@ -711,6 +717,10 @@ namespace winrt::TerminalApp::implementation
             else if (!_startupActions.empty())
             {
                 ProcessStartupActions(std::move(_startupActions));
+            }
+            else
+            {
+                LOG_IF_FAILED(_OpenNewTab(nullptr));
             }
 
             _CompleteInitialization();
@@ -2419,12 +2429,17 @@ namespace winrt::TerminalApp::implementation
 
         layout.LaunchMode({ mode });
 
-        // Only save the content size because the tab size will be added on load.
-        const auto contentWidth = static_cast<float>(_tabContent.ActualWidth());
-        const auto contentHeight = static_cast<float>(_tabContent.ActualHeight());
-        const winrt::Windows::Foundation::Size windowSize{ contentWidth, contentHeight };
-
-        layout.InitialSize(windowSize);
+        // XamlRoot covers the complete client area, including the sidebar and
+        // native host titlebar. Saving only TabContent shrinks restored windows.
+        if (const auto root = XamlRoot())
+        {
+            const auto size = root.Size();
+            if (size.Width > 0 && size.Height > 0)
+            {
+                layout.InitialSize(size);
+                layout.InitialSizeIncludesChrome({ true });
+            }
+        }
 
         // We don't actually know our own position. So we have to ask the window
         // layer for that.
@@ -4133,8 +4148,16 @@ namespace winrt::TerminalApp::implementation
     //   This includes update the settings of all the tabs according
     //   to their profiles, update the title and icon of each tab, and
     //   finally create the tab flyout
+    void TerminalPage::_RefreshMiskuConfigWarning()
+    {
+        const auto message = _settings.MiskuConfigError();
+        MiskuConfigWarningInfoBar().Message(message);
+        MiskuConfigWarningInfoBar().IsOpen(!message.empty());
+    }
+
     void TerminalPage::_RefreshUIForSettingsReload()
     {
+        _RefreshMiskuConfigWarning();
         // Re-wire the keybindings to their handlers, as we'll have created a
         // new AppKeyBindings object.
         _HookupKeyBindings(_settings.ActionMap());

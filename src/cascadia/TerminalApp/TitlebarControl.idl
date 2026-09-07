@@ -32,6 +32,8 @@ namespace TerminalApp
         Single CaptionButtonWidth { get; };
         Single AutoHideRevealHeight { get; };
         Boolean ChromeVisible { get; };
+        Boolean ChromePinned { get; };
+        event Windows.Foundation.EventHandler<Object> ChromePinnedChanged;
         Boolean Focused { get; set; };
 
         IInspectable Content;

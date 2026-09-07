@@ -24,6 +24,7 @@ static constexpr std::string_view SessionNamesKey{ "sessionNames" };
 static constexpr std::string_view TabSessionIndicesKey{ "tabSessionIndices" };
 static constexpr std::string_view ActiveSessionIndexKey{ "activeSessionIndex" };
 static constexpr std::string_view SessionSidebarVisibleKey{ "sessionSidebarVisible" };
+static constexpr std::string_view InitialSizeIncludesChromeKey{ "initialSizeIncludesChrome" };
 
 namespace Microsoft::Terminal::Settings::Model::JsonUtils
 {
@@ -44,6 +45,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             GetValueForKey(json, TabSessionIndicesKey, layout->_TabSessionIndices);
             GetValueForKey(json, ActiveSessionIndexKey, layout->_ActiveSessionIndex);
             GetValueForKey(json, SessionSidebarVisibleKey, layout->_SessionSidebarVisible);
+            GetValueForKey(json, InitialSizeIncludesChromeKey, layout->_InitialSizeIncludesChrome);
 
             return *layout;
         }
@@ -65,6 +67,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             SetValueForKey(json, TabSessionIndicesKey, val.TabSessionIndices());
             SetValueForKey(json, ActiveSessionIndexKey, val.ActiveSessionIndex());
             SetValueForKey(json, SessionSidebarVisibleKey, val.SessionSidebarVisible());
+            SetValueForKey(json, InitialSizeIncludesChromeKey, val.InitialSizeIncludesChrome());
 
             return json;
         }

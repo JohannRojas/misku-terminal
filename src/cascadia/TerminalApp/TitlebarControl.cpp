@@ -24,12 +24,14 @@ namespace winrt::TerminalApp::implementation
     {
         InitializeComponent();
 
+        _chromePinned = Microsoft::Terminal::Settings::Model::ApplicationState::SharedInstance().MiskuTitlebarPinned();
+        PinChromeButton().IsChecked(_chromePinned);
         _hideTimer.Interval(chromeHideDelay);
         _hideTimer.Tick([weakThis = get_weak()](auto&&, auto&&) {
             if (const auto self{ weakThis.get() })
             {
                 self->_hideTimer.Stop();
-                if (!self->_xamlPointerOver && !self->_nonClientPointerOver && !self->_keyboardFocusWithin)
+                if (!self->_chromePinned && !self->_xamlPointerOver && !self->_nonClientPointerOver && !self->_keyboardFocusWithin)
                 {
                     self->_setChromeVisible(false);
                 }
@@ -38,7 +40,7 @@ namespace winrt::TerminalApp::implementation
 
         // Collapse the chrome to a narrow reveal target. Unlike opacity-only
         // hiding, this returns the unused titlebar space to the terminal.
-        _setChromeVisible(false);
+        _setChromeVisible(_chromePinned);
 
         // Register our event handlers on the MMC buttons.
         MinMaxCloseControl().MinimizeClick({ this, &TitlebarControl::Minimize_Click });
@@ -83,6 +85,19 @@ namespace winrt::TerminalApp::implementation
         return _chromeVisible;
     }
 
+    bool TitlebarControl::ChromePinned()
+    {
+        return _chromePinned;
+    }
+
+    void TitlebarControl::PinChrome_Click(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&)
+    {
+        _chromePinned = PinChromeButton().IsChecked().Value();
+        Microsoft::Terminal::Settings::Model::ApplicationState::SharedInstance().MiskuTitlebarPinned(_chromePinned);
+        ChromePinnedChanged.raise(*this, nullptr);
+        _updateAutoHideState();
+    }
+
     bool TitlebarControl::Focused()
     {
         return MinMaxCloseControl().Focused();
@@ -117,7 +132,7 @@ namespace winrt::TerminalApp::implementation
         const auto windowWidth = ActualWidth();
         const auto minMaxCloseWidth = MinMaxCloseControl().ActualWidth();
         const auto dragBarMinWidth = DragBar().MinWidth();
-        const auto maxWidth = windowWidth - minMaxCloseWidth - dragBarMinWidth;
+        const auto maxWidth = windowWidth - minMaxCloseWidth - dragBarMinWidth - PinChromeButton().ActualWidth();
         // Only set our MaxWidth if it's greater than 0. Setting it to a
         // negative value will cause a crash.
         if (maxWidth >= 0)
@@ -165,7 +180,7 @@ namespace winrt::TerminalApp::implementation
 
     void TitlebarControl::_updateAutoHideState()
     {
-        const auto shouldShow = _xamlPointerOver || _nonClientPointerOver || _keyboardFocusWithin;
+        const auto shouldShow = _chromePinned || _xamlPointerOver || _nonClientPointerOver || _keyboardFocusWithin;
         if (shouldShow)
         {
             _hideTimer.Stop();

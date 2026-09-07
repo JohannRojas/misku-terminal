@@ -26,7 +26,7 @@
 
     // Miscellaneous
     "warning.confirmOnClose": "automatic",
-    "theme": "dark",
+    "theme": "Misku Dark",
     "snapToGridOnResize": true,
     "disableAnimations": false,
     "startupActions": "",
@@ -81,6 +81,29 @@
         //   - "foreground"
         //   - "background"
         //   - "cursorColor"
+        {
+            "name": "Misku Dark",
+            "background": "#101214",
+            "foreground": "#E6EAF0",
+            "cursorColor": "#8BE9FD",
+            "selectionBackground": "#334155",
+            "black": "#1B1E24",
+            "red": "#FF5F57",
+            "green": "#5AF78E",
+            "yellow": "#F3F99D",
+            "blue": "#57C7FF",
+            "purple": "#FF6AC1",
+            "cyan": "#9AEDFE",
+            "white": "#E6EAF0",
+            "brightBlack": "#5C6370",
+            "brightRed": "#FF6E67",
+            "brightGreen": "#6AF794",
+            "brightYellow": "#FFFFA5",
+            "brightBlue": "#6BD4FF",
+            "brightPurple": "#FF79C6",
+            "brightCyan": "#A4FFFF",
+            "brightWhite": "#FFFFFF"
+        },
         {
             "name": "Dimidium",
             "background": "#141414",
@@ -446,6 +469,20 @@
     ],
     "themes": [
         {
+            "name": "Misku Dark",
+            "window": {
+                "applicationTheme": "dark",
+                "useMica": false
+            },
+            "tab": {
+                "background": "terminalBackground",
+                "unfocusedBackground": "#00000000"
+            },
+            "tabRow": {
+                "unfocusedBackground": "#101214FF"
+            }
+        },
+        {
             "name": "light",
             "window": {
                 "applicationTheme": "light"
@@ -551,6 +588,7 @@
         { "command": "nextSession", "id": "Terminal.NextSession" },
         { "command": "prevSession", "id": "Terminal.PrevSession" },
         { "command": "toggleSessionSidebar", "id": "Terminal.ToggleSessionSidebar" },
+        { "command": "reloadSettings", "id": "Terminal.ReloadSettings" },
 
         // Tab Management
         // "command": "closeTab" is unbound by default.
@@ -776,7 +814,6 @@
         { "keys": "ctrl+b", "id": "Terminal.ToggleSessionSidebar" },
 
         // Pane Management
-        { "keys": "ctrl+w", "id": "Terminal.ClosePane" },
         { "keys": "ctrl+shift+w", "id": "Terminal.ClosePane" },
         { "keys": "alt+shift+-", "id": "Terminal.DuplicatePaneDown" },
         { "keys": "alt+shift+plus", "id": "Terminal.DuplicatePaneRight" },

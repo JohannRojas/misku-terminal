@@ -8,6 +8,7 @@
 #include "../TerminalApp/TerminalPage.h"
 #include "../TerminalApp/AppLogic.h"
 #include "../TerminalApp/AppCommandlineArgs.h"
+#include "../TerminalApp/SettingsLoadEventArgs.h"
 
 using namespace WEX::Logging;
 using namespace WEX::Common;
@@ -25,21 +26,11 @@ namespace winrt
 
 namespace TerminalAppLocalTests
 {
-    // TODO:microsoft/terminal#3838:
-    // Unfortunately, these tests _WILL NOT_ work in our CI. We're waiting for
-    // an updated TAEF that will let us install framework packages when the test
-    // package is deployed. Until then, these tests won't deploy in CI.
     class CommandlineTest
     {
-        // Use a custom AppxManifest to ensure that we can activate winrt types
-        // from our test. This property will tell taef to manually use this as
-        // the AppxManifest for this test class.
-        // This does not yet work for anything XAML-y. See TabTests.cpp for more
-        // details on that.
-        BEGIN_TEST_CLASS(CommandlineTest)
-            TEST_CLASS_PROPERTY(L"RunAs", L"UAP")
-            TEST_CLASS_PROPERTY(L"UAP:AppXManifest", L"TestHostAppXManifest.xml")
-        END_TEST_CLASS()
+        // These parser tests activate model objects but do not create XAML.
+        // Run them on the desktop so CI does not require AppX registration.
+        TEST_CLASS(CommandlineTest);
 
         TEST_METHOD(ParseSimpleCommandline);
         TEST_METHOD(ParseTrickyCommandlines);
@@ -61,6 +52,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(ParseNoCommandIsNewTab);
         TEST_METHOD(ParseSessionCommands);
+        TEST_METHOD(MiskuRestoredClientDimensions);
 
         TEST_METHOD(ValidateFirstCommandIsNewTab);
 
@@ -117,6 +109,39 @@ namespace TerminalAppLocalTests
             Log::Comment(NoThrowString().Format(L"%s", buffer.c_str()));
         }
     };
+
+    void CommandlineTest::MiskuRestoredClientDimensions()
+    {
+        const auto settings = CascadiaSettings::LoadDefaults();
+        const auto result = winrt::make<appImpl::SettingsLoadEventArgs>(false, S_OK, L"", nullptr, settings);
+        const auto window = winrt::make_self<appImpl::TerminalWindow>(result, nullptr);
+        for (const auto sidebar : { false, true })
+        {
+            WindowLayout layout;
+            layout.InitialSize({ winrt::Windows::Foundation::Size{ 1200, 800 } });
+            layout.InitialSizeIncludesChrome({ true });
+            layout.SessionSidebarVisible({ sidebar });
+            for (int restart = 0; restart < 5; ++restart)
+            {
+                layout = WindowLayout::FromJson(WindowLayout::ToJson(layout));
+                window->_cachedLayout = layout;
+                const auto normal = window->GetLaunchDimensions(96);
+                const auto scaled = window->GetLaunchDimensions(144);
+                VERIFY_ARE_EQUAL(1200.0f, normal.Width);
+                VERIFY_ARE_EQUAL(800.0f, normal.Height);
+                VERIFY_ARE_EQUAL(1800.0f, scaled.Width);
+                VERIFY_ARE_EQUAL(1200.0f, scaled.Height);
+            }
+        }
+        WindowLayout legacy;
+        legacy.InitialSize({ winrt::Windows::Foundation::Size{ 968, 797 } });
+        legacy.SessionSidebarVisible({ true });
+        window->_cachedLayout = legacy;
+        const auto migrated = window->GetLaunchDimensions(96);
+        VERIFY_ARE_EQUAL(1200.0f, migrated.Width);
+        const auto chrome = ApplicationState::SharedInstance().MiskuTitlebarPinned() ? 40.0f : 3.0f;
+        VERIFY_ARE_EQUAL(797.0f + chrome, migrated.Height);
+    }
 
     void CommandlineTest::ParseSimpleCommandline()
     {

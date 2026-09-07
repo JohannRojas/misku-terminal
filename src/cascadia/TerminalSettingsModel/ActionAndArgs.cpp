@@ -107,6 +107,7 @@ static constexpr std::string_view CreateSessionKey{ "createSession" };
 static constexpr std::string_view CloseSessionKey{ "closeSession" };
 static constexpr std::string_view NextSessionKey{ "nextSession" };
 static constexpr std::string_view PrevSessionKey{ "prevSession" };
+static constexpr std::string_view ReloadSettingsKey{ "reloadSettings" };
 static constexpr std::string_view ToggleSessionSidebarKey{ "toggleSessionSidebar" };
 static constexpr std::string_view WorkspacesKey{ "workspaces" };
 

@@ -39,6 +39,7 @@
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
         <ContentPresenter x:Name="ContentRoot"
@@ -49,13 +50,21 @@
                 MinWidth="45.0"
                 DoubleTapped="DragBar_DoubleTapped" />
 
+        <ToggleButton x:Name="PinChromeButton"
+                      x:Uid="PinChromeButton"
+                      Grid.Column="2"
+                      Width="36" Height="36" Padding="0"
+                      Click="PinChrome_Click">
+            <SymbolIcon Symbol="Pin" />
+        </ToggleButton>
+
         <local:MinMaxCloseControl x:Name="MinMaxCloseControl"
-                                  Grid.Column="2"
+                                  Grid.Column="3"
                                   HorizontalAlignment="Right" />
 
         <!--  This border needs to be added manually until GH#10320 is fixed  -->
         <Border Grid.Column="1"
-                Grid.ColumnSpan="2"
+                Grid.ColumnSpan="3"
                 Height="1"
                 VerticalAlignment="Bottom"
                 Background="{ThemeResource CardStrokeColorDefaultBrush}" />

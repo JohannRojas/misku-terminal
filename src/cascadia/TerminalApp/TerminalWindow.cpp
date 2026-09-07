@@ -608,6 +608,8 @@ namespace winrt::TerminalApp::implementation
     winrt::Windows::Foundation::Size TerminalWindow::GetLaunchDimensions(uint32_t dpi)
     {
         winrt::Windows::Foundation::Size proposedSize{};
+        bool restoredClientSize = false;
+        bool sessionSidebarVisible = true;
 
         // In focus mode, we don't want to include our own tab row in the size
         // of the window that we hand back. So we account for passing
@@ -619,6 +621,10 @@ namespace winrt::TerminalApp::implementation
         const auto scale = static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI);
         if (const auto layout = LoadPersistedLayout())
         {
+            if (layout.SessionSidebarVisible())
+            {
+                sessionSidebarVisible = layout.SessionSidebarVisible().Value();
+            }
             if (layout.LaunchMode())
             {
                 focusMode = layout.LaunchMode().Value() == LaunchMode::FocusMode;
@@ -627,6 +633,11 @@ namespace winrt::TerminalApp::implementation
             if (layout.InitialSize())
             {
                 proposedSize = layout.InitialSize().Value();
+                restoredClientSize = layout.InitialSizeIncludesChrome() && layout.InitialSizeIncludesChrome().Value();
+                if (!restoredClientSize && layout.SessionSidebarVisible() && layout.SessionSidebarVisible().Value())
+                {
+                    proposedSize.Width += static_cast<float>(SessionSidebarWidth);
+                }
                 // The size is saved as a non-scaled real pixel size,
                 // so we need to scale it appropriately.
                 proposedSize.Height = proposedSize.Height * scale;
@@ -636,6 +647,7 @@ namespace winrt::TerminalApp::implementation
 
         if ((_appArgs && _appArgs->ParsedArgs().GetSize().has_value()) || (proposedSize.Width == 0 && proposedSize.Height == 0))
         {
+            restoredClientSize = false;
             // Use the default profile to determine how big of a window we need.
             const auto settings{ Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, nullptr) };
 
@@ -645,6 +657,10 @@ namespace winrt::TerminalApp::implementation
                                                               dpi,
                                                               commandlineSize.width,
                                                               commandlineSize.height);
+            if (sessionSidebarVisible)
+            {
+                proposedSize.Width += static_cast<float>(SessionSidebarWidth) * scale;
+            }
         }
 
         if (_contentBounds)
@@ -656,6 +672,11 @@ namespace winrt::TerminalApp::implementation
                 _contentBounds.Value().Width * scale,
                 _contentBounds.Value().Height * scale
             };
+        }
+
+        if (restoredClientSize)
+        {
+            return proposedSize;
         }
 
         // GH#2061 - If the global setting "Always show tab bar" is
@@ -676,7 +697,7 @@ namespace winrt::TerminalApp::implementation
             // the titlebar / tab row ever change size, these numbers will have
             // to change accordingly.
 
-            static constexpr auto titlebarHeight = 40;
+            const auto titlebarHeight = ApplicationState::SharedInstance().MiskuTitlebarPinned() ? 40 : 3;
             proposedSize.Height += (titlebarHeight)*scale;
         }
         else if (_settings.GlobalSettings().AlwaysShowTabs() && !focusMode)

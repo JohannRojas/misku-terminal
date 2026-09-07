@@ -334,6 +334,36 @@ namespace winrt::TerminalApp::implementation
                     ReloadSettingsThrottled();
                 }
             });
+
+        for (const auto& configPath : CascadiaSettings::MiskuConfigPaths())
+        {
+            try
+            {
+                const auto path = std::filesystem::absolute(std::filesystem::path{ std::wstring_view{ configPath } });
+                // Watch only these small configuration directories. Watching the
+                // entire user profile recursively would turn unrelated I/O into work.
+                std::filesystem::create_directories(path.parent_path());
+                wil::unique_folder_change_reader_nothrow reader;
+                const auto result = reader.create(
+                    path.parent_path().c_str(), false,
+                    wil::FolderChangeEvents::FileName | wil::FolderChangeEvents::LastWriteTime,
+                    [this, basename = path.filename()](wil::FolderChangeEvent, PCWSTR modified) {
+                        if (til::equals_insensitive_ascii(std::wstring_view{ basename.native() }, std::wstring_view{ modified }))
+                        {
+                            ReloadSettingsThrottled();
+                        }
+                    });
+                if (SUCCEEDED(result))
+                {
+                    _miskuConfigReaders.emplace_back(std::move(reader));
+                }
+                else
+                {
+                    LOG_HR(result);
+                }
+            }
+            CATCH_LOG()
+        }
     }
 
     void AppLogic::_ApplyLanguageSettingChange() noexcept

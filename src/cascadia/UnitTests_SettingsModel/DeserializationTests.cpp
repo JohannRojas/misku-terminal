@@ -1924,7 +1924,8 @@ namespace SettingsModelUnitTests
         verifyBinding({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Menu, VK_NEXT, 0 }, ShortcutAction::NextSession);
         verifyBinding({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Menu, VK_PRIOR, 0 }, ShortcutAction::PrevSession);
         verifyBinding({ VirtualKeyModifiers::Control, static_cast<int32_t>('B'), 0 }, ShortcutAction::ToggleSessionSidebar);
-        verifyBinding({ VirtualKeyModifiers::Control, static_cast<int32_t>('W'), 0 }, ShortcutAction::ClosePane);
+        VERIFY_IS_NULL(settings.ActionMap().GetActionByKeyChord({ VirtualKeyModifiers::Control, static_cast<int32_t>('W'), 0 }));
+        verifyBinding({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Shift, static_cast<int32_t>('W'), 0 }, ShortcutAction::ClosePane);
     }
 
     void DeserializationTests::TestInheritedCommand()

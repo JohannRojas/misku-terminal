@@ -367,7 +367,7 @@ void NonClientIslandWindow::Initialize()
     _rootGrid.Children().Clear();
     Controls::RowDefinition titlebarRow{};
     Controls::RowDefinition contentRow{};
-    titlebarRow.Height(GridLengthHelper::Auto());
+    titlebarRow.Height(GridLengthHelper::FromValueAndType(3, GridUnitType::Pixel));
 
     _rootGrid.RowDefinitions().Clear();
     _rootGrid.RowDefinitions().Append(titlebarRow);
@@ -383,6 +383,13 @@ void NonClientIslandWindow::Initialize()
     _rootGrid.Children().Append(_titlebar);
 
     Controls::Grid::SetRow(_titlebar, 0);
+    Controls::Grid::SetRowSpan(_titlebar, 2);
+    Controls::Canvas::SetZIndex(_titlebar, 1);
+    const auto updatePinnedRow = [this](auto&&, auto&&) {
+        _UpdateTitlebarVisibility();
+    };
+    _titlebar.ChromePinnedChanged(updatePinnedRow);
+    updatePinnedRow(nullptr, nullptr);
 
     // GH#3440 - When the titlebar is loaded (officially added to our UI tree),
     // then make sure to update its visual state to reflect if we're in the
@@ -1126,7 +1133,7 @@ void NonClientIslandWindow::_SetIsBorderless(const bool borderlessEnabled)
 
     if (_titlebar)
     {
-        _titlebar.Visibility(_IsTitlebarVisible() ? Visibility::Visible : Visibility::Collapsed);
+        _UpdateTitlebarVisibility();
     }
 
     // Update the margins when entering/leaving focus mode, so we can prevent
@@ -1191,6 +1198,7 @@ void NonClientIslandWindow::_UpdateTitlebarVisibility()
     }
 
     const auto showTitlebar = _IsTitlebarVisible();
+    _rootGrid.RowDefinitions().GetAt(0).Height(GridLengthHelper::FromValueAndType(showTitlebar ? (_titlebar.ChromePinned() ? 40 : 3) : 0, GridUnitType::Pixel));
     _titlebar.Visibility(showTitlebar ? Visibility::Visible : Visibility::Collapsed);
     _titlebar.FullscreenChanged(_fullscreen);
 }

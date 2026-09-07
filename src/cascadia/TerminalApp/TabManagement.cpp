@@ -183,7 +183,11 @@ namespace winrt::TerminalApp::implementation
         for (const auto& tab : _tabs)
         {
             const auto isInActiveSession = _GetSessionForTab(tab).value_or(_activeTabSessionId) == _activeTabSessionId;
-            tab.TabViewItem().Visibility(isInActiveSession ? Visibility::Visible : Visibility::Collapsed);
+            const auto visibility = isInActiveSession ? Visibility::Visible : Visibility::Collapsed;
+            if (tab.TabViewItem().Visibility() != visibility)
+            {
+                tab.TabViewItem().Visibility(visibility);
+            }
         }
 
         const auto focusedTab = _GetFocusedTab();
@@ -372,11 +376,18 @@ namespace winrt::TerminalApp::implementation
 
             const auto& itemState = found->second;
             const auto count = sessionTabCounts.find(session.Id);
-            itemState.Title.Text(session.Name);
-            itemState.Count.Text(winrt::to_hstring(count == sessionTabCounts.end() ? 0u : count->second));
+            if (itemState.Title.Text() != session.Name)
+            {
+                itemState.Title.Text(session.Name);
+                WUX::Automation::AutomationProperties::SetName(itemState.Item, session.Name);
+            }
+            const auto countText = winrt::to_hstring(count == sessionTabCounts.end() ? 0u : count->second);
+            if (itemState.Count.Text() != countText)
+            {
+                itemState.Count.Text(countText);
+            }
             itemState.MoveTabItem.IsEnabled(focusedTab && focusedSessionId.value_or(0) != session.Id);
             itemState.CloseItem.IsEnabled(_tabSessions.size() > 1);
-            WUX::Automation::AutomationProperties::SetName(itemState.Item, session.Name);
 
             if (session.Id == _activeTabSessionId)
             {
@@ -384,7 +395,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        if (selectedItem)
+        if (selectedItem && _sessionList.SelectedItem() != selectedItem)
         {
             _sessionList.SelectedItem(selectedItem);
         }
