@@ -39,6 +39,8 @@ Run the same regression tests after building:
 
 Add `-UI` on a Windows desktop with the TestHost framework dependencies installed to also exercise native XAML startup, session moves and restoration, titlebar pinning, and session/layout latency at 2, 10 and 50 tabs. These latency measurements cover the synchronous interaction and layout work; they are not a display frame-rate measurement. Results are saved under `artifacts/tests`.
 
+The UI option runs the complete `TabTests` suite, including pane and zoom regression tests. The benchmark reports both the first block after opening tabs and a repeated block without new tabs. See [validation.md](validation.md) for the measured integration results and remaining validation limits.
+
 ## Repository settings
 
 The workflow requests read-only permissions by default. Only the release job requests `contents: write`, which is required to create GitHub releases.

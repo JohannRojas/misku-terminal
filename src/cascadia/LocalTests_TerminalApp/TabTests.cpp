@@ -80,6 +80,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(MiskuSessionIsolationAndRestore);
         TEST_METHOD(MiskuTitlebarPinnedStartup);
         TEST_METHOD(MiskuSessionSwitchingLatency);
+        TEST_METHOD(MiskuTabColorsStayCurrent);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -104,7 +105,16 @@ namespace TerminalAppLocalTests
 
         TEST_CLASS_SETUP(ClassSetup)
         {
-            return true;
+            return SUCCEEDED(RunOnUIThread([&]() {
+                _exceptionToken = Application::Current().UnhandledException([](auto&&, const UnhandledExceptionEventArgs& args) {
+                    Log::Error(args.Message().c_str());
+                });
+            }));
+        }
+
+        TEST_CLASS_CLEANUP(ClassCleanup)
+        {
+            return SUCCEEDED(RunOnUIThread([&]() { Application::Current().UnhandledException(_exceptionToken); }));
         }
 
         TEST_METHOD_CLEANUP(MethodCleanup)
@@ -113,6 +123,7 @@ namespace TerminalAppLocalTests
         }
 
     private:
+        winrt::event_token _exceptionToken{};
         void _initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
                                      CascadiaSettings initialSettings,
                                      bool addDefaultAction = true,
@@ -208,7 +219,14 @@ namespace TerminalAppLocalTests
 
     void TabTests::MiskuSessionSidebarShortcut()
     {
-        auto page = _commonSetup();
+        auto settings = CascadiaSettings::LoadDefaults();
+        for (const auto& profile : settings.AllProfiles())
+        {
+            profile.CloseOnExit(CloseOnExitMode::Never);
+        }
+        settings.GlobalSettings().ShowTabsInTitlebar(false);
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        _initializeTerminalPage(page, settings);
 
         TestOnUIThread([&page]() {
             constexpr double expectedSidebarWidth{ 232.0 };
@@ -287,23 +305,38 @@ namespace TerminalAppLocalTests
             {
                 TestOnUIThread([&]() { VERIFY_SUCCEEDED(page->_OpenNewTab(nullptr)); });
             }
-            std::vector<double> durations;
-            for (int iteration = 0; iteration < 30; ++iteration)
+            // The second block creates no additional tabs, separating pending
+            // initial layout work from repeated session navigation.
+            for (const auto phase : { L"after_open", L"repeat" })
             {
-                TestOnUIThread([&]() {
-                    const auto sidebarItem = page->_sessionSidebarItems.at(firstSession).Item;
-                    const auto start = std::chrono::steady_clock::now();
-                    page->_SwitchToSession(iteration % 2 ? firstSession : secondSession);
-                    page->UpdateLayout();
-                    const auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-                    durations.push_back(elapsed);
-                    VERIFY_ARE_EQUAL(sidebarItem, page->_sessionSidebarItems.at(firstSession).Item);
-                    VERIFY_IS_NOT_NULL(page->_GetActiveControl());
-                });
+                std::vector<double> durations;
+                std::vector<double> switchDurations;
+                std::vector<double> layoutDurations;
+                for (int iteration = 0; iteration < 30; ++iteration)
+                {
+                    TestOnUIThread([&]() {
+                        const auto sidebarItem = page->_sessionSidebarItems.at(firstSession).Item;
+                        const auto start = std::chrono::steady_clock::now();
+                        page->_SwitchToSession(iteration % 2 ? firstSession : secondSession);
+                        const auto switched = std::chrono::steady_clock::now();
+                        page->UpdateLayout();
+                        const auto end = std::chrono::steady_clock::now();
+                        const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
+                        durations.push_back(elapsed);
+                        switchDurations.push_back(std::chrono::duration<double, std::milli>(switched - start).count());
+                        layoutDurations.push_back(std::chrono::duration<double, std::milli>(end - switched).count());
+                        VERIFY_ARE_EQUAL(sidebarItem, page->_sessionSidebarItems.at(firstSession).Item);
+                        VERIFY_IS_NOT_NULL(page->_GetActiveControl());
+                    });
+                }
+                std::sort(durations.begin(), durations.end());
+                std::sort(switchDurations.begin(), switchDurations.end());
+                std::sort(layoutDurations.begin(), layoutDurations.end());
+                Log::Comment(NoThrowString().Format(L"Misku session/layout benchmark: tabs=%u phase=%s p50=%.3fms p95=%.3fms max=%.3fms",
+                                                    tabCount, phase, durations[15], durations[28], durations.back()));
+                Log::Comment(NoThrowString().Format(L"Misku benchmark stages: tabs=%u phase=%s switch_p50=%.3fms layout_p50=%.3fms",
+                                                    tabCount, phase, switchDurations[15], layoutDurations[15]));
             }
-            std::sort(durations.begin(), durations.end());
-            Log::Comment(NoThrowString().Format(L"Misku session/layout benchmark: tabs=%u p50=%.3fms p95=%.3fms max=%.3fms",
-                                                tabCount, durations[15], durations[28], durations.back()));
         }
     }
 
@@ -324,6 +357,37 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(titlebar.ChromeVisible());
                 VERIFY_ARE_EQUAL(40.0, titlebar.Height());
             }
+        });
+    }
+
+    void TabTests::MiskuTabColorsStayCurrent()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto originalBackground = tab->TabViewItem().Background().as<Media::SolidColorBrush>();
+            const auto originalColor = originalBackground.Color();
+            const auto originalOpacity = originalBackground.Opacity();
+            const auto selectedBackground = [&]() {
+                const auto dictionary = tab->TabViewItem().Resources().ThemeDictionaries().Lookup(winrt::box_value(L"Dark")).as<ResourceDictionary>();
+                return dictionary.Lookup(winrt::box_value(L"TabViewItemHeaderBackgroundSelected")).as<Media::SolidColorBrush>();
+            };
+            tab->SetRuntimeTabColor(winrt::Windows::UI::Colors::Red());
+            const auto redBrush = selectedBackground();
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), redBrush.Color());
+            page->_updateThemeColors();
+            VERIFY_ARE_EQUAL(redBrush, selectedBackground());
+            tab->SetRuntimeTabColor(winrt::Windows::UI::Colors::Blue());
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Blue(), selectedBackground().Color());
+            tab->ResetRuntimeTabColor();
+            const auto restoredBackground = tab->TabViewItem().Background().as<Media::SolidColorBrush>();
+            VERIFY_ARE_EQUAL(originalColor, restoredBackground.Color());
+            VERIFY_ARE_EQUAL(originalOpacity, restoredBackground.Opacity());
+            const auto session = page->_activeTabSessionId;
+            VERIFY_IS_TRUE(page->_CreateSessionWithNewTab());
+            page->_SwitchToSession(session);
+            VERIFY_IS_NOT_NULL(page->_GetActiveControl());
+            VERIFY_ARE_EQUAL(tab.get(), page->_GetFocusedTabImpl().get());
         });
     }
 

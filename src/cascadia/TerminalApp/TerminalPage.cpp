@@ -716,7 +716,10 @@ namespace winrt::TerminalApp::implementation
             }
             else if (!_startupActions.empty())
             {
-                ProcessStartupActions(std::move(_startupActions));
+                // Startup actions yield between tabs. Keep the session mapping
+                // alive and raise Initialized only after the entire restore.
+                ProcessStartupActions(std::move(_startupActions), {}, {}, true);
+                return;
             }
             else
             {
@@ -741,7 +744,7 @@ namespace winrt::TerminalApp::implementation
     //   nt -d .` from inside another directory to work as expected.
     // Return Value:
     // - <none>
-    safe_void_coroutine TerminalPage::ProcessStartupActions(std::vector<ActionAndArgs> actions, const winrt::hstring cwd, const winrt::hstring env)
+    safe_void_coroutine TerminalPage::ProcessStartupActions(std::vector<ActionAndArgs> actions, const winrt::hstring cwd, const winrt::hstring env, const bool completeInitialization)
     {
         const auto strong = get_strong();
 
@@ -791,6 +794,11 @@ namespace winrt::TerminalApp::implementation
 
             _actionDispatch->DoAction(actions[i]);
             suspend = true;
+        }
+
+        if (completeInitialization)
+        {
+            _CompleteInitialization();
         }
 
         // GH#6586: now that we're done processing all startup commands,

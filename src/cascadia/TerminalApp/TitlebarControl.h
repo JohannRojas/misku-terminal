@@ -19,7 +19,7 @@ namespace winrt::TerminalApp::implementation
         float AutoHideRevealHeight();
         bool ChromeVisible();
         bool ChromePinned();
-        til::typed_event<Windows::Foundation::IInspectable, Windows::Foundation::IInspectable> ChromePinnedChanged;
+        til::event<Windows::Foundation::EventHandler<Windows::Foundation::IInspectable>> ChromePinnedChanged;
         void PinChrome_Click(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
         void SetNonClientPointerOver(bool pointerOver);
 

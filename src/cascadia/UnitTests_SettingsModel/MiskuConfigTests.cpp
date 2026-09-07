@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 #include "pch.h"
+#include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/MiskuConfig.h"
 #include "JsonTestClass.h"
 #include <til/io.h>
@@ -14,6 +15,7 @@ namespace SettingsModelUnitTests
     {
         TEST_CLASS(MiskuConfigTests);
         TEST_METHOD(ValidConfigAndReloadAction);
+        TEST_METHOD(ConfigKeybindingsResolveToActions);
         TEST_METHOD(InvalidNumericValuesAreRejected);
         TEST_METHOD(InvalidConfigKeepsLastValidAndDeletionDisablesOverlay);
     };
@@ -30,6 +32,43 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(90, json["profiles"]["defaults"]["opacity"].asInt());
         VERIFY_ARE_EQUAL(4000, json["profiles"]["defaults"]["historySize"].asInt());
         VERIFY_ARE_EQUAL(std::string{ "Terminal.ReloadSettings" }, json["keybindings"][0]["id"].asString());
+    }
+
+    void MiskuConfigTests::ConfigKeybindingsResolveToActions()
+    {
+        using namespace winrt::Microsoft::Terminal::Settings::Model;
+        using VirtualKeyModifiers = winrt::Windows::System::VirtualKeyModifiers;
+        static constexpr std::array cases{
+            std::pair{ std::string_view{ "new_tab" }, ShortcutAction::NewTab },
+            std::pair{ std::string_view{ "new_session" }, ShortcutAction::CreateSession },
+            std::pair{ std::string_view{ "toggle_sidebar" }, ShortcutAction::ToggleSessionSidebar },
+            std::pair{ std::string_view{ "close_tab" }, ShortcutAction::CloseTab },
+            std::pair{ std::string_view{ "split_right" }, ShortcutAction::SplitPane },
+            std::pair{ std::string_view{ "split_down" }, ShortcutAction::SplitPane },
+            std::pair{ std::string_view{ "open_config" }, ShortcutAction::OpenSettings },
+            std::pair{ std::string_view{ "reload_config" }, ShortcutAction::ReloadSettings },
+            std::pair{ std::string_view{ "copy" }, ShortcutAction::CopyText },
+            std::pair{ std::string_view{ "paste" }, ShortcutAction::PasteText },
+            std::pair{ std::string_view{ "toggle_fullscreen" }, ShortcutAction::ToggleFullscreen },
+        };
+        const auto settings = implementation::CascadiaSettings::LoadDefaults();
+        const auto globals = winrt::get_self<implementation::GlobalAppSettings>(settings.GlobalSettings());
+        for (const auto& [name, expected] : cases)
+        {
+            WEX::Logging::Log::Comment(winrt::to_hstring(name).c_str());
+            const auto result = ParseMiskuConfig(L"config.misku", std::string{ "keybind = ctrl+alt+f12=" } + std::string{ name });
+            VERIFY_IS_TRUE(result.json.has_value());
+            globals->LayerActionsFrom(VerifyParseSucceeded(*result.json), OriginTag::User);
+            VERIFY_IS_TRUE(globals->KeybindingsWarnings().empty());
+            const auto command = settings.ActionMap().GetActionByKeyChord({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Menu, VK_F12, 0 });
+            VERIFY_IS_NOT_NULL(command);
+            VERIFY_ARE_EQUAL(expected, command.ActionAndArgs().Action());
+            if (expected == ShortcutAction::SplitPane)
+            {
+                const auto args = command.ActionAndArgs().Args().as<winrt::Microsoft::Terminal::Settings::Model::SplitPaneArgs>();
+                VERIFY_ARE_EQUAL(name == "split_right" ? SplitDirection::Right : SplitDirection::Down, args.SplitDirection());
+            }
+        }
     }
 
     void MiskuConfigTests::InvalidNumericValuesAreRejected()

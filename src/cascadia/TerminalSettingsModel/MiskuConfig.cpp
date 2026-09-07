@@ -101,7 +101,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             std::pair{ std::string_view{ "new_tab" }, std::string_view{ "Terminal.OpenNewTab" } },
             std::pair{ std::string_view{ "new_session" }, std::string_view{ "Terminal.CreateSession" } },
             std::pair{ std::string_view{ "toggle_sidebar" }, std::string_view{ "Terminal.ToggleSessionSidebar" } },
-            std::pair{ std::string_view{ "close_tab" }, std::string_view{ "Terminal.CloseTab" } },
             std::pair{ std::string_view{ "split_right" }, std::string_view{ "Terminal.SplitPaneRight" } },
             std::pair{ std::string_view{ "split_down" }, std::string_view{ "Terminal.SplitPaneDown" } },
             std::pair{ std::string_view{ "open_config" }, std::string_view{ "Terminal.OpenSettingsFile" } },
@@ -115,6 +114,13 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         binding["keys"] = miskuUnquote(keys);
 
         const auto normalizedAction = miskuLower(miskuUnquote(action));
+        if (normalizedAction == "close_tab")
+        {
+            // closeTab has no inbox command ID. Define it only when explicitly bound.
+            binding["command"] = "closeTab";
+            return binding;
+        }
+
         for (const auto& [name, id] : mappings)
         {
             if (normalizedAction == name)
