@@ -1915,7 +1915,6 @@ WOWx
 wparam
 wpf
 wpfdotnet
-WPR
 wprp
 wprpi
 wregex

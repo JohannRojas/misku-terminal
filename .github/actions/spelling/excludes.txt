@@ -95,6 +95,8 @@ Resources/(?!en)
 ^consolegit2gitfilters\.json$
 ^dep/
 ^doc/reference/master-sequence-list\.csv$
+# Spanish validation report; the checker uses English dictionaries.
+^doc/misku/validation\.md$
 ^doc/reference/UTF8-torture-test\.txt$
 ^doc/reference/windows-terminal-logo\.ans$
 ^NOTICE.md
