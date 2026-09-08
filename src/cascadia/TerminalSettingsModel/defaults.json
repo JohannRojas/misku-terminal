@@ -7,6 +7,7 @@
     "initialRows": 30,
     "launchMode": "default",
     "alwaysOnTop": false,
+    "firstWindowPreference": "persistedLayout",
 
     // Selection
     "copyOnSelect": false,
@@ -25,7 +26,7 @@
 
     // Miscellaneous
     "warning.confirmOnClose": "automatic",
-    "theme": "dark",
+    "theme": "Misku Dark",
     "snapToGridOnResize": true,
     "disableAnimations": false,
     "startupActions": "",
@@ -80,6 +81,29 @@
         //   - "foreground"
         //   - "background"
         //   - "cursorColor"
+        {
+            "name": "Misku Dark",
+            "background": "#101214",
+            "foreground": "#E6EAF0",
+            "cursorColor": "#8BE9FD",
+            "selectionBackground": "#334155",
+            "black": "#1B1E24",
+            "red": "#FF5F57",
+            "green": "#5AF78E",
+            "yellow": "#F3F99D",
+            "blue": "#57C7FF",
+            "purple": "#FF6AC1",
+            "cyan": "#9AEDFE",
+            "white": "#E6EAF0",
+            "brightBlack": "#5C6370",
+            "brightRed": "#FF6E67",
+            "brightGreen": "#6AF794",
+            "brightYellow": "#FFFFA5",
+            "brightBlue": "#6BD4FF",
+            "brightPurple": "#FF79C6",
+            "brightCyan": "#A4FFFF",
+            "brightWhite": "#FFFFFF"
+        },
         {
             "name": "Dimidium",
             "background": "#141414",
@@ -445,6 +469,20 @@
     ],
     "themes": [
         {
+            "name": "Misku Dark",
+            "window": {
+                "applicationTheme": "dark",
+                "useMica": false
+            },
+            "tab": {
+                "background": "terminalBackground",
+                "unfocusedBackground": "#00000000"
+            },
+            "tabRow": {
+                "unfocusedBackground": "#101214FF"
+            }
+        },
+        {
             "name": "light",
             "window": {
                 "applicationTheme": "light"
@@ -543,6 +581,14 @@
         { "command": { "action": "showSuggestions", "source": "all"}, "id": "Terminal.Suggestions" },
         { "command": "openCWD", "id": "Terminal.OpenCWD" },
         { "command": "workspaces", "id": "Terminal.Workspaces" },
+
+        // Session Management
+        { "command": "createSession", "id": "Terminal.CreateSession" },
+        { "command": "closeSession", "id": "Terminal.CloseSession" },
+        { "command": "nextSession", "id": "Terminal.NextSession" },
+        { "command": "prevSession", "id": "Terminal.PrevSession" },
+        { "command": "toggleSessionSidebar", "id": "Terminal.ToggleSessionSidebar" },
+        { "command": "reloadSettings", "id": "Terminal.ReloadSettings" },
 
         // Tab Management
         // "command": "closeTab" is unbound by default.
@@ -737,7 +783,7 @@
         // Tab Management
         // "command": "closeTab" is unbound by default.
         //   The closeTab command closes a tab without confirmation, even if it has multiple panes.
-        { "keys": "ctrl+shift+t", "id": "Terminal.OpenNewTab" },
+        { "keys": "ctrl+t", "id": "Terminal.OpenNewTab" },
         { "keys": "ctrl+shift+n", "id": "Terminal.OpenNewWindow" },
         { "keys": "ctrl+shift+1", "id": "Terminal.OpenNewTabProfile0" },
         { "keys": "ctrl+shift+2", "id": "Terminal.OpenNewTabProfile1" },
@@ -760,6 +806,12 @@
         { "keys": "ctrl+alt+7", "id": "Terminal.SwitchToTab6" },
         { "keys": "ctrl+alt+8", "id": "Terminal.SwitchToTab7" },
         { "keys": "ctrl+alt+9", "id": "Terminal.SwitchToLastTab" },
+
+        // Session Management
+        { "keys": "ctrl+shift+t", "id": "Terminal.CreateSession" },
+        { "keys": "ctrl+alt+pgdn", "id": "Terminal.NextSession" },
+        { "keys": "ctrl+alt+pgup", "id": "Terminal.PrevSession" },
+        { "keys": "ctrl+b", "id": "Terminal.ToggleSessionSidebar" },
 
         // Pane Management
         { "keys": "ctrl+shift+w", "id": "Terminal.ClosePane" },

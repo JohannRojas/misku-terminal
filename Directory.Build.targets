@@ -8,4 +8,21 @@
     <Import Project="$(MSBuildCachePackageRoot)\build\$(MSBuildCachePackageName).targets" />
     <Import Project="$(MSBuildCacheSharedCompilationPackageRoot)\build\Microsoft.MSBuildCache.SharedCompilation.targets" />
   </ImportGroup>
+
+  <ItemDefinitionGroup Condition="'$(MiskuLowMemoryBuild)' == 'true'">
+    <ClCompile>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <!-- All XAML projects use C++/WinRT. SDK 26100's optional hybrid C++/CX
+       detection crashes on resource dictionaries without x:Class and can emit
+       C++/CX metadata code. It is unnecessary for these pure C++/WinRT projects. -->
+  <Target Name="MiskuUsePureCppWinRTXaml"
+          BeforeTargets="MarkupCompilePass1;MarkupCompilePass2"
+          Condition="'$(CppWinRTEnabled)' == 'true' and '$(XamlLanguage)' == 'CppWinRT'">
+    <ItemGroup>
+      <XamlCppWinRTLocalAssembly Remove="@(XamlCppWinRTLocalAssembly)" />
+    </ItemGroup>
+  </Target>
 </Project>

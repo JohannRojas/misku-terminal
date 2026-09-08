@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "App.h"
+#include "AppLogic.h"
 
 #include "TerminalPage.h"
 #include "ScratchpadContent.h"
@@ -604,6 +605,55 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
+    void TerminalPage::_HandleCreateSession(const IInspectable& /*sender*/,
+                                            const ActionEventArgs& args)
+    {
+        _CreateSessionWithNewTab();
+        // Match NewTab: an auto-elevated profile may create its content in a
+        // different window, but the command was still successfully consumed.
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleCloseSession(const IInspectable& /*sender*/,
+                                           const ActionEventArgs& args)
+    {
+        if (_tabSessions.size() > 1)
+        {
+            _CloseSession(_activeTabSessionId);
+        }
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleNextSession(const IInspectable& /*sender*/,
+                                          const ActionEventArgs& args)
+    {
+        _SelectAdjacentSession(true);
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandlePrevSession(const IInspectable& /*sender*/,
+                                          const ActionEventArgs& args)
+    {
+        _SelectAdjacentSession(false);
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleReloadSettings(const IInspectable&, const ActionEventArgs& args)
+    {
+        if (const auto logic = AppLogic::Current())
+        {
+            logic->ReloadSettingsThrottled();
+        }
+        args.Handled(true);
+    }
+
+    void TerminalPage::_HandleToggleSessionSidebar(const IInspectable& /*sender*/,
+                                                   const ActionEventArgs& args)
+    {
+        _SetSessionSidebarVisible(!_isSessionSidebarVisible);
+        args.Handled(true);
+    }
+
     void TerminalPage::_HandleSetFocusMode(const IInspectable& /*sender*/,
                                            const ActionEventArgs& args)
     {
@@ -787,16 +837,26 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            // Since _RemoveTabs is asynchronous, create a snapshot of the  tabs we want to remove
-            std::vector<winrt::TerminalApp::Tab> tabsToRemove;
-            if (index > 0)
+            if (index >= _tabs.Size())
             {
-                std::copy(begin(_tabs), begin(_tabs) + index, std::back_inserter(tabsToRemove));
+                actionArgs.Handled(false);
+                return;
             }
 
-            if (index + 1 < _tabs.Size())
+            // Sessions are independent tab sets. Closing "other" tabs must
+            // not tear down tabs that are merely hidden in another session.
+            const auto targetSessionId = _GetSessionForTab(_tabs.GetAt(index)).value_or(_activeTabSessionId);
+
+            // Since _RemoveTabs is asynchronous, create a snapshot of the tabs
+            // we want to remove.
+            std::vector<winrt::TerminalApp::Tab> tabsToRemove;
+            for (uint32_t i = 0; i < _tabs.Size(); ++i)
             {
-                std::copy(begin(_tabs) + index + 1, end(_tabs), std::back_inserter(tabsToRemove));
+                const auto tab = _tabs.GetAt(i);
+                if (i != index && _GetSessionForTab(tab).value_or(_activeTabSessionId) == targetSessionId)
+                {
+                    tabsToRemove.push_back(tab);
+                }
             }
 
             _RemoveTabs(tabsToRemove);
@@ -826,9 +886,25 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            // Since _RemoveTabs is asynchronous, create a snapshot of the  tabs we want to remove
+            if (index >= _tabs.Size())
+            {
+                actionArgs.Handled(false);
+                return;
+            }
+
+            const auto targetSessionId = _GetSessionForTab(_tabs.GetAt(index)).value_or(_activeTabSessionId);
+
+            // Since _RemoveTabs is asynchronous, create a snapshot of the tabs
+            // that follow the target within the same session.
             std::vector<winrt::TerminalApp::Tab> tabsToRemove;
-            std::copy(begin(_tabs) + index + 1, end(_tabs), std::back_inserter(tabsToRemove));
+            for (uint32_t i = index + 1; i < _tabs.Size(); ++i)
+            {
+                const auto tab = _tabs.GetAt(i);
+                if (_GetSessionForTab(tab).value_or(_activeTabSessionId) == targetSessionId)
+                {
+                    tabsToRemove.push_back(tab);
+                }
+            }
             _RemoveTabs(tabsToRemove);
 
             // TODO:GH#7182 For whatever reason, if you run this action

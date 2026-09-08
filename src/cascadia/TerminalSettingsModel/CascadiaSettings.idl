@@ -17,6 +17,8 @@ namespace Microsoft.Terminal.Settings.Model
     runtimeclass CascadiaSettings {
         static CascadiaSettings LoadDefaults();
         static CascadiaSettings LoadAll();
+        static Windows.Foundation.Collections.IVectorView<String> MiskuConfigPaths { get; };
+        String MiskuConfigError { get; };
 
         static String SettingsDirectory { get; };
         static String SettingsPath { get; };

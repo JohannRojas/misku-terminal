@@ -20,6 +20,11 @@ static constexpr std::string_view TabLayoutKey{ "tabLayout" };
 static constexpr std::string_view InitialPositionKey{ "initialPosition" };
 static constexpr std::string_view InitialSizeKey{ "initialSize" };
 static constexpr std::string_view LaunchModeKey{ "launchMode" };
+static constexpr std::string_view SessionNamesKey{ "sessionNames" };
+static constexpr std::string_view TabSessionIndicesKey{ "tabSessionIndices" };
+static constexpr std::string_view ActiveSessionIndexKey{ "activeSessionIndex" };
+static constexpr std::string_view SessionSidebarVisibleKey{ "sessionSidebarVisible" };
+static constexpr std::string_view InitialSizeIncludesChromeKey{ "initialSizeIncludesChrome" };
 
 namespace Microsoft::Terminal::Settings::Model::JsonUtils
 {
@@ -36,6 +41,11 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             GetValueForKey(json, InitialPositionKey, layout->_InitialPosition);
             GetValueForKey(json, LaunchModeKey, layout->_LaunchMode);
             GetValueForKey(json, InitialSizeKey, layout->_InitialSize);
+            GetValueForKey(json, SessionNamesKey, layout->_SessionNames);
+            GetValueForKey(json, TabSessionIndicesKey, layout->_TabSessionIndices);
+            GetValueForKey(json, ActiveSessionIndexKey, layout->_ActiveSessionIndex);
+            GetValueForKey(json, SessionSidebarVisibleKey, layout->_SessionSidebarVisible);
+            GetValueForKey(json, InitialSizeIncludesChromeKey, layout->_InitialSizeIncludesChrome);
 
             return *layout;
         }
@@ -53,6 +63,11 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             SetValueForKey(json, InitialPositionKey, val.InitialPosition());
             SetValueForKey(json, LaunchModeKey, val.LaunchMode());
             SetValueForKey(json, InitialSizeKey, val.InitialSize());
+            SetValueForKey(json, SessionNamesKey, val.SessionNames());
+            SetValueForKey(json, TabSessionIndicesKey, val.TabSessionIndices());
+            SetValueForKey(json, ActiveSessionIndexKey, val.ActiveSessionIndex());
+            SetValueForKey(json, SessionSidebarVisibleKey, val.SessionSidebarVisible());
+            SetValueForKey(json, InitialSizeIncludesChromeKey, val.InitialSizeIncludesChrome());
 
             return json;
         }

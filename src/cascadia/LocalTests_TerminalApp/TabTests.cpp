@@ -75,6 +75,12 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
+        TEST_METHOD(MiskuSessionSidebarShortcut);
+        TEST_METHOD(MiskuStartupWithoutActions);
+        TEST_METHOD(MiskuSessionIsolationAndRestore);
+        TEST_METHOD(MiskuTitlebarPinnedStartup);
+        TEST_METHOD(MiskuSessionSwitchingLatency);
+        TEST_METHOD(MiskuTabColorsStayCurrent);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -99,7 +105,16 @@ namespace TerminalAppLocalTests
 
         TEST_CLASS_SETUP(ClassSetup)
         {
-            return true;
+            return SUCCEEDED(RunOnUIThread([&]() {
+                _exceptionToken = Application::Current().UnhandledException([](auto&&, const UnhandledExceptionEventArgs& args) {
+                    Log::Error(args.Message().c_str());
+                });
+            }));
+        }
+
+        TEST_CLASS_CLEANUP(ClassCleanup)
+        {
+            return SUCCEEDED(RunOnUIThread([&]() { Application::Current().UnhandledException(_exceptionToken); }));
         }
 
         TEST_METHOD_CLEANUP(MethodCleanup)
@@ -108,8 +123,11 @@ namespace TerminalAppLocalTests
         }
 
     private:
+        winrt::event_token _exceptionToken{};
         void _initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
-                                     CascadiaSettings initialSettings);
+                                     CascadiaSettings initialSettings,
+                                     bool addDefaultAction = true,
+                                     WindowLayout restoredLayout = nullptr);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup();
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
@@ -199,6 +217,245 @@ namespace TerminalAppLocalTests
         VERIFY_SUCCEEDED(result);
     }
 
+    void TabTests::MiskuSessionSidebarShortcut()
+    {
+        auto settings = CascadiaSettings::LoadDefaults();
+        for (const auto& profile : settings.AllProfiles())
+        {
+            profile.CloseOnExit(CloseOnExitMode::Never);
+        }
+        settings.GlobalSettings().ShowTabsInTitlebar(false);
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        _initializeTerminalPage(page, settings);
+
+        TestOnUIThread([&page]() {
+            constexpr double expectedSidebarWidth{ 232.0 };
+            const auto sessionCount = page->_tabSessions.size();
+            const auto activeSessionId = page->_activeTabSessionId;
+
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->SessionSidebar().Visibility());
+            VERIFY_ARE_EQUAL(expectedSidebarWidth, page->SessionSidebarColumn().Width().Value);
+
+            const winrt::Microsoft::Terminal::Control::KeyChord ctrlB{
+                VirtualKeyModifiers::Control,
+                static_cast<int32_t>(VirtualKey::B),
+                0
+            };
+
+            VERIFY_IS_TRUE(page->_bindings->TryKeyChord(ctrlB));
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->SessionSidebar().Visibility());
+            VERIFY_ARE_EQUAL(0.0, page->SessionSidebarColumn().Width().Value);
+            VERIFY_ARE_EQUAL(sessionCount, page->_tabSessions.size());
+
+            VERIFY_IS_TRUE(page->_bindings->TryKeyChord(ctrlB));
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->SessionSidebar().Visibility());
+            VERIFY_ARE_EQUAL(expectedSidebarWidth, page->SessionSidebarColumn().Width().Value);
+            VERIFY_ARE_EQUAL(sessionCount, page->_tabSessions.size());
+
+            const auto initialTabCount = page->_tabs.Size();
+            const winrt::Microsoft::Terminal::Control::KeyChord ctrlT{
+                VirtualKeyModifiers::Control,
+                static_cast<int32_t>(VirtualKey::T),
+                0
+            };
+            VERIFY_IS_TRUE(page->_bindings->TryKeyChord(ctrlT));
+            VERIFY_ARE_EQUAL(initialTabCount + 1, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(activeSessionId,
+                             page->_GetSessionForTab(page->_tabs.GetAt(initialTabCount)).value_or(0));
+
+            const winrt::Microsoft::Terminal::Control::KeyChord ctrlShiftT{
+                VirtualKeyModifiers::Control | VirtualKeyModifiers::Shift,
+                static_cast<int32_t>(VirtualKey::T),
+                0
+            };
+            VERIFY_IS_TRUE(page->_bindings->TryKeyChord(ctrlShiftT));
+            VERIFY_ARE_EQUAL(sessionCount + 1, page->_tabSessions.size());
+            VERIFY_ARE_NOT_EQUAL(activeSessionId, page->_activeTabSessionId);
+
+            VERIFY_IS_TRUE(page->_SelectAdjacentSession(false));
+            VERIFY_ARE_EQUAL(activeSessionId, page->_activeTabSessionId);
+            VERIFY_IS_TRUE(page->_SelectAdjacentSession(true));
+            VERIFY_ARE_NOT_EQUAL(activeSessionId, page->_activeTabSessionId);
+
+            const auto layout = page->GetWindowLayout();
+            VERIFY_IS_NOT_NULL(layout);
+            VERIFY_ARE_EQUAL(2u, layout.SessionNames().Size());
+            VERIFY_ARE_EQUAL(page->_tabs.Size(), layout.TabSessionIndices().Size());
+            VERIFY_ARE_EQUAL(0u, layout.TabSessionIndices().GetAt(0));
+            VERIFY_ARE_EQUAL(1u, layout.TabSessionIndices().GetAt(layout.TabSessionIndices().Size() - 1));
+            VERIFY_ARE_EQUAL(1u, layout.ActiveSessionIndex().Value());
+            VERIFY_IS_TRUE(layout.SessionSidebarVisible().Value());
+        });
+    }
+
+    void TabTests::MiskuSessionSwitchingLatency()
+    {
+        auto page = _commonSetup();
+        uint32_t firstSession = 0;
+        uint32_t secondSession = 0;
+        TestOnUIThread([&]() {
+            firstSession = page->_activeTabSessionId;
+            VERIFY_IS_TRUE(page->_CreateSessionWithNewTab());
+            secondSession = page->_activeTabSessionId;
+        });
+
+        for (const auto tabCount : { 2u, 10u, 50u })
+        {
+            while (page->_tabs.Size() < tabCount)
+            {
+                TestOnUIThread([&]() { VERIFY_SUCCEEDED(page->_OpenNewTab(nullptr)); });
+            }
+            // The second block creates no additional tabs, separating pending
+            // initial layout work from repeated session navigation.
+            for (const auto phase : { L"after_open", L"repeat" })
+            {
+                std::vector<double> durations;
+                std::vector<double> switchDurations;
+                std::vector<double> layoutDurations;
+                for (int iteration = 0; iteration < 30; ++iteration)
+                {
+                    TestOnUIThread([&]() {
+                        const auto sidebarItem = page->_sessionSidebarItems.at(firstSession).Item;
+                        const auto start = std::chrono::steady_clock::now();
+                        page->_SwitchToSession(iteration % 2 ? firstSession : secondSession);
+                        const auto switched = std::chrono::steady_clock::now();
+                        page->UpdateLayout();
+                        const auto end = std::chrono::steady_clock::now();
+                        const auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
+                        durations.push_back(elapsed);
+                        switchDurations.push_back(std::chrono::duration<double, std::milli>(switched - start).count());
+                        layoutDurations.push_back(std::chrono::duration<double, std::milli>(end - switched).count());
+                        VERIFY_ARE_EQUAL(sidebarItem, page->_sessionSidebarItems.at(firstSession).Item);
+                        VERIFY_IS_NOT_NULL(page->_GetActiveControl());
+                    });
+                }
+                std::sort(durations.begin(), durations.end());
+                std::sort(switchDurations.begin(), switchDurations.end());
+                std::sort(layoutDurations.begin(), layoutDurations.end());
+                Log::Comment(NoThrowString().Format(L"Misku session/layout benchmark: tabs=%u phase=%s p50=%.3fms p95=%.3fms max=%.3fms",
+                                                    tabCount, phase, durations[15], durations[28], durations.back()));
+                Log::Comment(NoThrowString().Format(L"Misku benchmark stages: tabs=%u phase=%s switch_p50=%.3fms layout_p50=%.3fms",
+                                                    tabCount, phase, switchDurations[15], layoutDurations[15]));
+            }
+        }
+    }
+
+    void TabTests::MiskuTitlebarPinnedStartup()
+    {
+        TestOnUIThread([]() {
+            const auto state = ApplicationState::SharedInstance();
+            const auto previousPinned = state.MiskuTitlebarPinned();
+            const auto restore = wil::scope_exit([&]() { state.MiskuTitlebarPinned(previousPinned); });
+            for (const auto pinned : { false, true })
+            {
+                state.MiskuTitlebarPinned(pinned);
+                winrt::TerminalApp::TitlebarControl titlebar{ uint64_t{ 0 } };
+                VERIFY_ARE_EQUAL(pinned, titlebar.ChromePinned());
+                VERIFY_ARE_EQUAL(pinned, titlebar.ChromeVisible());
+                VERIFY_ARE_EQUAL(pinned ? 40.0 : 3.0, titlebar.Height());
+                titlebar.SetNonClientPointerOver(true);
+                VERIFY_IS_TRUE(titlebar.ChromeVisible());
+                VERIFY_ARE_EQUAL(40.0, titlebar.Height());
+            }
+        });
+    }
+
+    void TabTests::MiskuTabColorsStayCurrent()
+    {
+        auto page = _commonSetup();
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            const auto originalBackground = tab->TabViewItem().Background().as<Media::SolidColorBrush>();
+            const auto originalColor = originalBackground.Color();
+            const auto originalOpacity = originalBackground.Opacity();
+            const auto selectedBackground = [&]() {
+                const auto dictionary = tab->TabViewItem().Resources().ThemeDictionaries().Lookup(winrt::box_value(L"Dark")).as<ResourceDictionary>();
+                return dictionary.Lookup(winrt::box_value(L"TabViewItemHeaderBackgroundSelected")).as<Media::SolidColorBrush>();
+            };
+            tab->SetRuntimeTabColor(winrt::Windows::UI::Colors::Red());
+            const auto redBrush = selectedBackground();
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Red(), redBrush.Color());
+            page->_updateThemeColors();
+            VERIFY_ARE_EQUAL(redBrush, selectedBackground());
+            tab->SetRuntimeTabColor(winrt::Windows::UI::Colors::Blue());
+            VERIFY_ARE_EQUAL(winrt::Windows::UI::Colors::Blue(), selectedBackground().Color());
+            tab->ResetRuntimeTabColor();
+            const auto restoredBackground = tab->TabViewItem().Background().as<Media::SolidColorBrush>();
+            VERIFY_ARE_EQUAL(originalColor, restoredBackground.Color());
+            VERIFY_ARE_EQUAL(originalOpacity, restoredBackground.Opacity());
+            const auto session = page->_activeTabSessionId;
+            VERIFY_IS_TRUE(page->_CreateSessionWithNewTab());
+            page->_SwitchToSession(session);
+            VERIFY_IS_NOT_NULL(page->_GetActiveControl());
+            VERIFY_ARE_EQUAL(tab.get(), page->_GetFocusedTabImpl().get());
+        });
+    }
+
+    void TabTests::MiskuStartupWithoutActions()
+    {
+        CascadiaSettings settings{ LR"({"profiles":[{"name":"startup","commandline":"cmd.exe","closeOnExit":"never"}]})", {} };
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        _initializeTerminalPage(page, settings, false);
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(1u, page->_tabs.Size());
+            VERIFY_IS_NOT_NULL(page->_GetActiveControl());
+            VERIFY_IS_TRUE(page->_tabContent.ActualWidth() > 0);
+            VERIFY_IS_TRUE(page->_tabContent.ActualHeight() > 0);
+        });
+    }
+
+    void TabTests::MiskuSessionIsolationAndRestore()
+    {
+        auto page = _commonSetup();
+        const auto settings = page->_settings;
+        WindowLayout savedLayout{ nullptr };
+        TestOnUIThread([&]() {
+            const auto firstSession = page->_activeTabSessionId;
+            const auto firstTab = page->_GetFocusedTab();
+            VERIFY_SUCCEEDED(page->_OpenNewTab(nullptr));
+            const auto movedTab = page->_GetFocusedTab();
+            VERIFY_IS_TRUE(page->_CreateSessionWithNewTab());
+            const auto secondSession = page->_activeTabSessionId;
+            const auto secondTab = page->_GetFocusedTab();
+
+            page->_SwitchToSession(firstSession);
+            page->_SelectTab(1);
+            page->_MoveFocusedTabToSession(secondSession);
+            VERIFY_ARE_EQUAL(secondSession, page->_activeTabSessionId);
+            VERIFY_ARE_EQUAL(movedTab, page->_GetFocusedTab());
+            VERIFY_ARE_EQUAL(1u, page->_GetSessionTabCount(firstSession));
+            VERIFY_ARE_EQUAL(2u, page->_GetSessionTabCount(secondSession));
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, firstTab.TabViewItem().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, secondTab.TabViewItem().Visibility());
+
+            // Closing this session's extra tab must preserve the other session.
+            page->_RemoveTab(movedTab);
+            VERIFY_ARE_EQUAL(2u, page->_tabs.Size());
+            VERIFY_ARE_EQUAL(2u, page->_tabSessions.size());
+            VERIFY_ARE_EQUAL(secondTab, page->_GetFocusedTab());
+            page->_SetSessionSidebarVisible(false);
+            savedLayout = page->GetWindowLayout();
+            VERIFY_IS_TRUE(savedLayout.InitialSizeIncludesChrome().Value());
+            VERIFY_ARE_EQUAL(page->XamlRoot().Size().Width, savedLayout.InitialSize().Value().Width);
+        });
+
+        // Build a fresh page and execute the persisted actions, not just a JSON round trip.
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> restored;
+        _initializeTerminalPage(restored, settings, false, savedLayout);
+        TestOnUIThread([&]() {
+            VERIFY_ARE_EQUAL(2u, restored->_tabs.Size());
+            VERIFY_ARE_EQUAL(2u, restored->_tabSessions.size());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, restored->SessionSidebar().Visibility());
+            const auto layout = restored->GetWindowLayout();
+            VERIFY_ARE_EQUAL(1u, layout.ActiveSessionIndex().Value());
+            VERIFY_ARE_EQUAL(0u, layout.TabSessionIndices().GetAt(0));
+            VERIFY_ARE_EQUAL(1u, layout.TabSessionIndices().GetAt(1));
+            VERIFY_IS_NOT_NULL(restored->_GetActiveControl());
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, restored->_tabs.GetAt(0).TabViewItem().Visibility());
+            VERIFY_ARE_EQUAL(Visibility::Visible, restored->_tabs.GetAt(1).TabViewItem().Visibility());
+        });
+    }
+
     // Method Description:
     // - This is a helper to set up a TerminalPage for a unittest. This method
     //   does a couple things:
@@ -225,7 +482,9 @@ namespace TerminalAppLocalTests
     // Return Value:
     // - <none>
     void TabTests::_initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
-                                           CascadiaSettings initialSettings)
+                                           CascadiaSettings initialSettings,
+                                           bool addDefaultAction,
+                                           WindowLayout restoredLayout)
     {
         // This is super wacky, but we can't just initialize the
         // com_ptr<impl::TerminalPage> in the lambda and assign it back out of
@@ -263,9 +522,14 @@ namespace TerminalAppLocalTests
 
         Log::Comment(L"Create() the TerminalPage");
 
-        result = RunOnUIThread([&page]() {
+        result = RunOnUIThread([&page, addDefaultAction, restoredLayout]() {
             VERIFY_IS_NOT_NULL(page);
             VERIFY_IS_NOT_NULL(page->_settings);
+            if (restoredLayout)
+            {
+                page->SetStartupSessionLayout(restoredLayout);
+                page->SetStartupActions({ restoredLayout.TabLayout().begin(), restoredLayout.TabLayout().end() });
+            }
             page->Create();
             Log::Comment(L"Create()'d the page successfully");
 
@@ -275,7 +539,10 @@ namespace TerminalAppLocalTests
             NewTabArgs args{ newTerminalArgs };
             ActionAndArgs newTabAction{ ShortcutAction::NewTab, args };
             // push the arg onto the front
-            page->_startupActions.push_back(std::move(newTabAction));
+            if (addDefaultAction)
+            {
+                page->_startupActions.push_back(std::move(newTabAction));
+            }
             Log::Comment(L"Added a single newTab action");
 
             auto app = ::winrt::Windows::UI::Xaml::Application::Current();
@@ -290,6 +557,11 @@ namespace TerminalAppLocalTests
         VERIFY_SUCCEEDED(waitForInitEvent.Wait());
         Log::Comment(L"...Done");
 
+        // The new startup/restore tests deliberately verify the natural selection.
+        if (!addDefaultAction)
+        {
+            return;
+        }
         result = RunOnUIThread([&page]() {
             // In the real app, this isn't a problem, but doesn't happen
             // reliably in the unit tests.

@@ -24,6 +24,11 @@ namespace Microsoft.Terminal.Settings.Model
         Windows.Foundation.IReference<LaunchPosition> InitialPosition;
         Windows.Foundation.IReference<Windows.Foundation.Size> InitialSize;
         Windows.Foundation.IReference<LaunchMode> LaunchMode;
+        Windows.Foundation.Collections.IVector<String> SessionNames;
+        Windows.Foundation.Collections.IVector<UInt32> TabSessionIndices;
+        Windows.Foundation.IReference<UInt32> ActiveSessionIndex;
+        Windows.Foundation.IReference<Boolean> SessionSidebarVisible;
+        Windows.Foundation.IReference<Boolean> InitialSizeIncludesChrome;
     };
 
     [default_interface] runtimeclass ApplicationState {
@@ -42,6 +47,7 @@ namespace Microsoft.Terminal.Settings.Model
         WindowLayout TakeWorkspace(String name);
         Windows.Foundation.Collections.IMapView<String, WindowLayout> AllPersistedWorkspaces();
 
+        Boolean MiskuTitlebarPinned;
         String SettingsHash;
         Windows.Foundation.Collections.IVector<WindowLayout> PersistedWindowLayouts;
         Windows.Foundation.Collections.IVector<String> RecentCommands;

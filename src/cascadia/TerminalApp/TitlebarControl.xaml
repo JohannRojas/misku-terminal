@@ -9,10 +9,15 @@
       xmlns:local="using:TerminalApp"
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
       x:Name="Root"
+      Height="3"
       HorizontalAlignment="Stretch"
       VerticalAlignment="Top"
       d:DesignHeight="36"
       d:DesignWidth="400"
+      GotFocus="Root_GotFocus"
+      LostFocus="Root_LostFocus"
+      PointerEntered="Root_PointerEntered"
+      PointerExited="Root_PointerExited"
       SizeChanged="Root_SizeChanged"
       mc:Ignorable="d">
 
@@ -25,29 +30,49 @@
         accent color. (which is GH#1963)
     -->
 
-    <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="Auto" />
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="Auto" />
-    </Grid.ColumnDefinitions>
+    <Grid x:Name="ChromeRoot"
+          Height="40"
+          VerticalAlignment="Top"
+          IsHitTestVisible="False"
+          Opacity="0">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
 
-    <ContentPresenter x:Name="ContentRoot"
-                      Grid.Column="0" />
+        <ContentPresenter x:Name="ContentRoot"
+                          Grid.Column="0" />
 
-    <Border x:Name="DragBar"
-            Grid.Column="1"
-            MinWidth="45.0"
-            DoubleTapped="DragBar_DoubleTapped" />
+        <Border x:Name="DragBar"
+                Grid.Column="1"
+                MinWidth="45.0"
+                DoubleTapped="DragBar_DoubleTapped" />
 
-    <local:MinMaxCloseControl x:Name="MinMaxCloseControl"
-                              Grid.Column="2"
-                              HorizontalAlignment="Right" />
+        <ToggleButton x:Name="PinChromeButton"
+                      x:Uid="PinChromeButton"
+                      Grid.Column="2"
+                      Width="36" Height="36" Padding="0"
+                      Click="PinChrome_Click">
+            <SymbolIcon Symbol="Pin" />
+        </ToggleButton>
 
-    <!--  This border needs to be added manually until GH#10320 is fixed  -->
-    <Border Grid.Column="1"
-            Grid.ColumnSpan="2"
-            Height="1"
-            VerticalAlignment="Bottom"
-            Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <local:MinMaxCloseControl x:Name="MinMaxCloseControl"
+                                  Grid.Column="3"
+                                  HorizontalAlignment="Right" />
+
+        <!--  This border needs to be added manually until GH#10320 is fixed  -->
+        <Border Grid.Column="1"
+                Grid.ColumnSpan="3"
+                Height="1"
+                VerticalAlignment="Bottom"
+                Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+    </Grid>
+
+    <!-- Keep a small, transparent pointer target when the chrome is collapsed. -->
+    <Border Height="3"
+            VerticalAlignment="Top"
+            Background="Transparent" />
 </Grid>
 

@@ -29,6 +29,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(RenameWorkspaceNoOpForMissingEntry);
         TEST_METHOD(TakeWorkspaceRemovesAndReturns);
         TEST_METHOD(TakeWorkspaceReturnsNullWhenMissing);
+        TEST_METHOD(WindowLayoutPreservesSessionMetadata);
+        TEST_METHOD(WindowLayoutKeepsClientSizeAcrossRestores);
 
     private:
         static std::filesystem::path _tempRoot()
@@ -134,5 +136,45 @@ namespace SettingsModelUnitTests
     {
         auto state = _make();
         VERIFY_IS_NULL(state->TakeWorkspace(L"missing"));
+    }
+
+    void ApplicationStateTests::WindowLayoutPreservesSessionMetadata()
+    {
+        auto layout = _makeLayout();
+        layout.SessionNames(winrt::single_threaded_vector<winrt::hstring>(std::vector<winrt::hstring>{ L"API", L"UI" }));
+        layout.TabSessionIndices(winrt::single_threaded_vector<uint32_t>(std::vector<uint32_t>{ 0u, 1u, 1u }));
+        layout.ActiveSessionIndex({ 1u });
+        layout.SessionSidebarVisible({ false });
+
+        const auto restored = WindowLayout::FromJson(WindowLayout::ToJson(layout));
+        VERIFY_ARE_EQUAL(2u, restored.SessionNames().Size());
+        VERIFY_ARE_EQUAL(L"API", restored.SessionNames().GetAt(0));
+        VERIFY_ARE_EQUAL(L"UI", restored.SessionNames().GetAt(1));
+        VERIFY_ARE_EQUAL(3u, restored.TabSessionIndices().Size());
+        VERIFY_ARE_EQUAL(0u, restored.TabSessionIndices().GetAt(0));
+        VERIFY_ARE_EQUAL(1u, restored.TabSessionIndices().GetAt(2));
+        VERIFY_ARE_EQUAL(1u, restored.ActiveSessionIndex().Value());
+        VERIFY_IS_FALSE(restored.SessionSidebarVisible().Value());
+    }
+
+    void ApplicationStateTests::WindowLayoutKeepsClientSizeAcrossRestores()
+    {
+        for (const auto sidebarVisible : { false, true })
+        {
+            auto layout = _makeLayout();
+            layout.InitialSize({ winrt::Windows::Foundation::Size{ 1200, 800 } });
+            layout.InitialSizeIncludesChrome({ true });
+            layout.SessionSidebarVisible({ sidebarVisible });
+            for (int restart = 0; restart < 5; ++restart)
+            {
+                layout = WindowLayout::FromJson(WindowLayout::ToJson(layout));
+                VERIFY_IS_TRUE(layout.InitialSizeIncludesChrome().Value());
+                VERIFY_ARE_EQUAL(1200.0f, layout.InitialSize().Value().Width);
+                VERIFY_ARE_EQUAL(800.0f, layout.InitialSize().Value().Height);
+                VERIFY_ARE_EQUAL(sidebarVisible, layout.SessionSidebarVisible().Value());
+            }
+        }
+        const auto legacy = WindowLayout::FromJson(LR"({"tabLayout":[],"initialSize":{"width":968,"height":797}})");
+        VERIFY_IS_NULL(legacy.InitialSizeIncludesChrome());
     }
 }

@@ -159,6 +159,9 @@ namespace winrt::TerminalApp::implementation
         winrt::Microsoft::Terminal::Settings::Model::ThemeColor _themeColor{ nullptr };
         winrt::Microsoft::Terminal::Settings::Model::ThemeColor _unfocusedThemeColor{ nullptr };
         til::color _tabRowColor;
+        std::optional<std::array<til::color, 3>> _appliedTabColors;
+        bool _appliedTabColorSelected{ false };
+        bool _tabBackgroundCleared{ false };
 
         Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility _closeButtonVisibility{ Microsoft::Terminal::Settings::Model::TabCloseButtonVisibility::Always };
 
