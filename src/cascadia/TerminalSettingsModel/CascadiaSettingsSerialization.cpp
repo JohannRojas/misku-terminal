@@ -3,9 +3,14 @@
 
 #include "pch.h"
 #include "CascadiaSettings.h"
+#include "MiskuConfig.h"
 
+#include <array>
+#include <cctype>
+#include <LibraryResources.h>
 #include <fmt/chrono.h>
 #include <shlobj.h>
+#include <sstream>
 #include <til/latch.h>
 #include <til/io.h>
 
@@ -61,7 +66,6 @@ static constexpr std::wstring_view FragmentsSubDirectory{ L"\\Fragments" };
 static constexpr std::wstring_view FragmentsPath{ L"\\Microsoft\\Windows Terminal\\Fragments" };
 
 static constexpr std::wstring_view AppExtensionHostName{ L"com.microsoft.windows.terminal.settings" };
-
 // make sure this matches defaults.json.
 static constexpr winrt::guid DEFAULT_WINDOWS_POWERSHELL_GUID{ 0x61c54bbd, 0xc2c6, 0x5271, { 0x96, 0xe7, 0x00, 0x9a, 0x87, 0xff, 0x44, 0xbf } };
 static constexpr winrt::guid DEFAULT_COMMAND_PROMPT_GUID{ 0x0caa0dad, 0x35be, 0x5f56, { 0xa8, 0xff, 0xaf, 0xce, 0xee, 0xaa, 0x61, 0x01 } };
@@ -1262,11 +1266,14 @@ try
     }
 
     // Only uses default settings when firstTimeSetup is true and releaseSettingExists is false
-    // Otherwise use existing settingsString
+    // Otherwise use existing settingsString. Misku then layers config.misku over that JSON,
+    // while the normal settings loader continues to own validation and merging.
     const auto settingsStringView = (firstTimeSetup && !releaseSettingExists) ? LoadStringResource(IDR_USER_DEFAULTS) : settingsString;
+    winrt::hstring miskuConfigError;
+    auto effectiveSettingsString = ApplyMiskuConfigOverlay(settingsStringView, miskuConfigError);
     auto mustWriteToDisk = firstTimeSetup;
 
-    SettingsLoader loader{ settingsStringView, LoadStringResource(IDR_DEFAULTS) };
+    SettingsLoader loader{ effectiveSettingsString, LoadStringResource(IDR_DEFAULTS) };
 
     winrt::hstring baseUserSettingsPath{ GetBaseSettingsPath().native() };
     loader.userSettings.baseLayerProfile->SourceBasePath = baseUserSettingsPath;
@@ -1302,12 +1309,42 @@ try
 
     // If this throws, the app will catch it and use the default settings.
     const auto settings = winrt::make_self<CascadiaSettings>(std::move(loader));
+    settings->_MiskuConfigError = std::move(miskuConfigError);
 
     // If we created the file, or found new dynamic profiles, write the user
     // settings string back to the file.
     if (mustWriteToDisk)
     {
-        settings->WriteSettingsToDisk();
+        if (effectiveSettingsString == settingsStringView)
+        {
+            settings->WriteSettingsToDisk();
+        }
+        else
+        {
+            // The optional overlay must not become permanent just because a new
+            // dynamic profile was discovered. This slow path runs only on migration.
+            SettingsLoader persistedLoader{ settingsStringView, LoadStringResource(IDR_DEFAULTS) };
+            persistedLoader.userSettings.baseLayerProfile->SourceBasePath = baseUserSettingsPath;
+            persistedLoader.userSettings.globals->SourceBasePath = baseUserSettingsPath;
+            for (const auto& profile : persistedLoader.userSettings.profiles)
+            {
+                profile->SourceBasePath = baseUserSettingsPath;
+            }
+            persistedLoader.GenerateProfiles();
+            if (firstTimeSetup && !releaseSettingExists)
+            {
+                persistedLoader.ApplyRuntimeInitialSettings();
+            }
+            persistedLoader.MergeInboxIntoUserSettings();
+            persistedLoader.FindFragmentsAndMergeIntoUserSettings(false);
+            persistedLoader.FinalizeLayering();
+            persistedLoader.DisableDeletedProfiles();
+            persistedLoader.FixupUserSettings();
+            persistedLoader.AddDynamicProfileFolders();
+            const auto persistedSettings = winrt::make_self<CascadiaSettings>(std::move(persistedLoader));
+            persistedSettings->WriteSettingsToDisk();
+            settings->_hash = persistedSettings->_hash;
+        }
     }
     else
     {
@@ -1972,4 +2009,14 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
                               TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         }
     }
+}
+
+winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> CascadiaSettings::MiskuConfigPaths()
+{
+    std::vector<winrt::hstring> paths;
+    for (const auto& path : MiskuConfigSearchPaths())
+    {
+        paths.emplace_back(path.native());
+    }
+    return winrt::single_threaded_vector<winrt::hstring>(std::move(paths)).GetView();
 }

@@ -117,7 +117,13 @@ $itemsToRemove = $filesToRemove | ForEach-Object {
         $filesToKeep -NotContains $_.Name
     }
 } | Sort-Object FullName -Unique
-$itemsToRemove | Remove-Item -Recurse
+$payloadRoot = (Resolve-Path -LiteralPath $terminalAppPath).Path.TrimEnd('\') + '\'
+foreach ($item in $itemsToRemove) {
+    if (-not $item.FullName.StartsWith($payloadRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove a file outside the temporary payload: $($item.FullName)"
+    }
+    Remove-Item -LiteralPath $item.FullName -Recurse
+}
 
 $filesToCopyFromXaml | ForEach-Object {
     Get-Item (Join-Path $xamlAppPath $_)
@@ -148,7 +154,10 @@ If ($PSCmdlet.ParameterSetName -Eq "AppX") {
 	New-Item -ItemType Directory -Path $Destination -ErrorAction:SilentlyContinue | Out-Null
 	$outputZip = (Join-Path $Destination ("{0}.zip" -f ($distributionName)))
 	& tar -c --format=zip -f $outputZip -C $tempDir $terminalDir
-	Remove-Item -Recurse -Force $tempDir -EA:SilentlyContinue
+	$resolvedTemp = (Resolve-Path -LiteralPath $tempDir).Path
+	$temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+	if (-not $resolvedTemp.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected temporary package directory' }
+	Remove-Item -LiteralPath $resolvedTemp -Recurse -Force -EA:SilentlyContinue
 	Get-Item $outputZip
 } ElseIf ($PSCmdlet.ParameterSetName -Eq "Layout") {
 	Get-Item $terminalAppPath

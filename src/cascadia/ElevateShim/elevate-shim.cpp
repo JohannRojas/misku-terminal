@@ -35,11 +35,11 @@ int __stdcall wWinMain(HINSTANCE, HINSTANCE, LPWSTR cmdline, int)
     //
     // #1 discover and invoke the app using the GetCurrentApplicationUserModelId
     // api using shell:AppsFolder\package!appid
-    //    cmd:    shell:AppsFolder\WindowsTerminalDev_8wekyb3d8bbwe!App
+    //    cmd:    shell:AppsFolder\MiskuTerminalDev_8wekyb3d8bbwe!App
     //    params: new-tab -p {guid}
     //
-    // #2 find and execute WindowsTerminal.exe
-    //    cmd:    {same path as this binary}\WindowsTerminal.exe
+    // #2 find and execute misku.exe
+    //    cmd:    {same path as this binary}\misku.exe
     //    params: new-tab -p {guid}
 
     std::wstring cmd;
@@ -64,12 +64,12 @@ int __stdcall wWinMain(HINSTANCE, HINSTANCE, LPWSTR cmdline, int)
     if (cmd.empty())
     {
         // scenario #2
-        // Get the path to WindowsTerminal.exe, which should live next to us.
+        // Get the path to misku.exe, which should live next to us.
         std::filesystem::path module{
             wil::GetModuleFileNameW<std::wstring>(nullptr)
         };
-        // Swap elevate-shim.exe for WindowsTerminal.exe
-        module.replace_filename(L"WindowsTerminal.exe");
+        // Swap elevate-shim.exe for misku.exe
+        module.replace_filename(L"misku.exe");
         cmd = module;
     }
 
@@ -81,7 +81,7 @@ int __stdcall wWinMain(HINSTANCE, HINSTANCE, LPWSTR cmdline, int)
     seInfo.cbSize = sizeof(seInfo);
     seInfo.fMask = SEE_MASK_DEFAULT;
     seInfo.lpVerb = L"runas"; // This asks the shell to elevate the process
-    seInfo.lpFile = cmd.c_str(); // This is `shell:AppsFolder\...` or `...\WindowsTerminal.exe`
+    seInfo.lpFile = cmd.c_str(); // This is `shell:AppsFolder\...` or `...\misku.exe`
     seInfo.lpParameters = cmdline; // This is `new-tab -p {guid}`
     seInfo.nShow = SW_SHOWNORMAL;
     LOG_IF_WIN32_BOOL_FALSE(ShellExecuteExW(&seInfo));

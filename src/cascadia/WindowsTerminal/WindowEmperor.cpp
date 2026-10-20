@@ -52,6 +52,53 @@ static std::vector<winrt::hstring> commandlineToArgArray(const wchar_t* commandL
     return args;
 }
 
+static void applyMiskuEarlyCommandlineOverrides()
+{
+    const auto args = commandlineToArgArray(GetCommandLineW());
+    for (size_t i = 1; i < args.size(); ++i)
+    {
+        const auto arg = std::wstring_view{ args.at(i) };
+        if (arg.empty() || arg == L"--" || arg.front() != L'-')
+        {
+            // Everything after the first subcommand or executable belongs to it.
+            // A child application's --config must never change Misku's settings.
+            break;
+        }
+        auto setFromNext = [&](std::wstring_view envName) {
+            if (i + 1 < args.size())
+            {
+                SetEnvironmentVariableW(envName.data(), args.at(++i).c_str());
+            }
+        };
+
+        if (arg == L"--config")
+        {
+            setFromNext(L"MISKU_CONFIG");
+        }
+        else if (arg == L"--theme")
+        {
+            setFromNext(L"MISKU_THEME");
+        }
+        else if (til::starts_with(arg, L"--config="))
+        {
+            const auto value = std::wstring{ arg.substr(9) };
+            SetEnvironmentVariableW(L"MISKU_CONFIG", value.c_str());
+        }
+        else if (til::starts_with(arg, L"--theme="))
+        {
+            const auto value = std::wstring{ arg.substr(8) };
+            SetEnvironmentVariableW(L"MISKU_THEME", value.c_str());
+        }
+        else if (arg == L"-w" || arg == L"--window" || arg == L"-s" || arg == L"--saved" ||
+                 arg == L"--pos" || arg == L"--size" || arg == L"-p" || arg == L"--profile" ||
+                 arg == L"-d" || arg == L"--startingDirectory" || arg == L"--working-directory" ||
+                 arg == L"--title" || arg == L"--tabColor" || arg == L"--colorScheme" || arg == L"--sessionId")
+        {
+            ++i;
+        }
+    }
+}
+
 // Returns the length of a double-null encoded string *excluding* the trailing double-null character.
 static wil::zwstring_view stringFromDoubleNullTerminated(const wchar_t* beg)
 {
@@ -552,6 +599,8 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
         wil::unique_cotaskmem_string localAppDataFolder;
         SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppDataFolder);
     }
+
+    applyMiskuEarlyCommandlineOverrides();
 
     _app = winrt::TerminalApp::App{};
     _app.Logic().ReloadSettings();

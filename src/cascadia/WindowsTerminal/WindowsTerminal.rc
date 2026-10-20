@@ -82,7 +82,7 @@ BEGIN
     IDS_ERROR_DIALOG_TITLE  "Error"
     IDS_HELP_DIALOG_TITLE  "Help"
     IDS_ERROR_ARCHITECTURE_FORMAT
-                            "Windows Terminal is designed to run on your system's native architecture (%s).\nYou are currently using the %s version.\n\nPlease use the version of Windows Terminal that matches your system's native architecture."
+                            "Misku Terminal is designed to run on your system's native architecture (%s).\nYou are currently using the %s version.\n\nPlease use the version of Misku Terminal that matches your system's native architecture."
     IDS_X86_ARCHITECTURE    "i386"
 END
 

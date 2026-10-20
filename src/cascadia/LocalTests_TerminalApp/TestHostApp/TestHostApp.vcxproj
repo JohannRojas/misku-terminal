@@ -136,6 +136,9 @@
     </Reference>
   </ItemGroup>
 
+  <!-- Default profiles use ms-appx:///ProfileIcons URIs. Keep the test
+       package's assets aligned with the actual app for startup tests. -->
+  <Import Project="$(OpenConsoleDir)src\cascadia\CascadiaResources.build.items" />
   <Import Project="$(OpenConsoleDir)\src\common.build.post.props" />
   <Import Project="$(OpenConsoleDir)\src\common.nugetversions.targets" />
 
@@ -143,7 +146,7 @@
     <TestDll Include="$(OpenConsoleCommonOutDir)\LocalTests_TerminalApp\TerminalApp.LocalTests.dll" />
   </ItemGroup>
 
-  <Target Name="AfterBuild" Inputs="@(TestDll)" Outputs="@(TestDll->'$(TargetDir)'\%(Filename)%(Extension)')">
+  <Target Name="AfterBuild">
 
     <!-- Use this to auto-find all the dll's that TerminalConnection produces. We
       don't roll these up automatically, so we'll need to copy them manually
@@ -178,6 +181,13 @@
     <Copy SourceFiles="@(TerminalConnectionDlls)"
           DestinationFolder="$(TargetDir)"
           UseHardLinksIfPossible="true"
+          SkipUnchangedFiles="true" />
+
+    <ItemGroup>
+      <TestPackageAssets Include="@(Content)" Condition="'%(Content.Link)' != ''" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TestPackageAssets)"
+          DestinationFiles="@(TestPackageAssets->'$(TargetDir)%(Link)')"
           SkipUnchangedFiles="true" />
 
   </Target>

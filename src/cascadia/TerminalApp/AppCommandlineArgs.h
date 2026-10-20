@@ -22,7 +22,7 @@ class TerminalApp::AppCommandlineArgs final
 public:
     static constexpr std::string_view NixHelpFlag{ "-?" };
     static constexpr std::string_view WindowsHelpFlag{ "/?" };
-    static constexpr std::wstring_view PlaceholderExeName{ L"wt.exe" };
+    static constexpr std::wstring_view PlaceholderExeName{ L"misku.exe" };
 
     AppCommandlineArgs();
     ~AppCommandlineArgs() = default;
@@ -52,7 +52,7 @@ public:
 private:
     static const std::wregex _commandDelimiterRegex;
 
-    CLI::App _app{ "wt - the Windows Terminal" };
+    CLI::App _app{ "misku - Misku Terminal" };
 
     // This is a helper struct to encapsulate all the options for a subcommand
     // that produces a NewTerminalArgs.
@@ -93,6 +93,12 @@ private:
     CLI::App* _focusPaneCommand;
     CLI::App* _focusPaneShort;
     CLI::App* _saveCommand;
+    CLI::App* _closeTabCommand;
+    CLI::App* _newSessionCommand;
+    CLI::App* _closeSessionCommand;
+    CLI::App* _nextSessionCommand;
+    CLI::App* _previousSessionCommand;
+    CLI::App* _toggleSessionSidebarCommand;
 
     // Are you adding a new sub-command? Make sure to update _noCommandsProvided!
 
@@ -150,6 +156,7 @@ private:
     void _buildMovePaneParser();
     void _buildSwapPaneParser();
     void _buildFocusPaneParser();
+    void _buildSessionParser();
     bool _noCommandsProvided();
     void _resetStateToDefault();
     int _handleExit(const CLI::App& command, const CLI::Error& e);

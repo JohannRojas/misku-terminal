@@ -1,0 +1,7 @@
+ENTERSIZEMOVE
+etl
+EXITSIZEMOVE
+installable
+keybind
+miskud
+wpr

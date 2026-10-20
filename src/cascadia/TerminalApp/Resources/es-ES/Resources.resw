@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -333,6 +333,24 @@
   </data>
   <data name="CmdNewTabDesc" xml:space="preserve">
     <value>Crear una nueva pestaña</value>
+  </data>
+  <data name="CmdCloseTabDesc" xml:space="preserve">
+    <value>Cerrar la pestaña activa</value>
+  </data>
+  <data name="CmdNewSessionDesc" xml:space="preserve">
+    <value>Crear una sesión y abrir su primera pestaña</value>
+  </data>
+  <data name="CmdCloseSessionDesc" xml:space="preserve">
+    <value>Cerrar la sesión activa</value>
+  </data>
+  <data name="CmdNextSessionDesc" xml:space="preserve">
+    <value>Cambiar a la sesión siguiente</value>
+  </data>
+  <data name="CmdPreviousSessionDesc" xml:space="preserve">
+    <value>Cambiar a la sesión anterior</value>
+  </data>
+  <data name="CmdToggleSessionSidebarDesc" xml:space="preserve">
+    <value>Mostrar u ocultar la barra lateral de sesiones</value>
   </data>
   <data name="CmdNTDesc" xml:space="preserve">
     <value>Un alias para el subcomando "new-tab".</value>
@@ -999,5 +1017,55 @@
   </data>
   <data name="InvalidRegex" xml:space="preserve">
     <value>Se ha encontrado una expresión regular no válida.</value>
+  </data>
+  <data name="SessionSidebarTitle.Text" xml:space="preserve">
+    <value>SESIONES</value>
+    <comment>Encabezado de la barra lateral que agrupa pestañas por objetivo.</comment>
+  </data>
+  <data name="NewSessionButtonLabel.Text" xml:space="preserve">
+    <value>Nueva sesión</value>
+  </data>
+  <data name="NewSessionButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Crear una nueva sesión</value>
+  </data>
+  <data name="NewSessionButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Crear una sesión y abrir su primera pestaña</value>
+  </data>
+  <data name="SessionSidebarHint.Text" xml:space="preserve">
+    <value>Ctrl+T pestaña • Ctrl+Mayús+T sesión • Ctrl+B barra lateral</value>
+  </data>
+  <data name="SessionDefaultName" xml:space="preserve">
+    <value>Sesión {0}</value>
+    <comment>{locked="{0}"}{0} es el número de la sesión.</comment>
+  </data>
+  <data name="RenameSessionMenuItem" xml:space="preserve">
+    <value>Cambiar nombre</value>
+  </data>
+  <data name="MoveActiveTabToSessionMenuItem" xml:space="preserve">
+    <value>Mover la pestaña activa aquí</value>
+  </data>
+  <data name="CloseSessionMenuItem" xml:space="preserve">
+    <value>Cerrar sesión</value>
+  </data>
+  <data name="RenameSessionDialog.Title" xml:space="preserve">
+    <value>Cambiar nombre de la sesión</value>
+  </data>
+  <data name="RenameSessionDialog.PrimaryButtonText" xml:space="preserve">
+    <value>Guardar</value>
+  </data>
+  <data name="RenameSessionDialog.CloseButtonText" xml:space="preserve">
+    <value>Cancelar</value>
+  </data>
+  <data name="RenameSessionTextBox.Header" xml:space="preserve">
+    <value>Nombre de la sesión</value>
+  </data>
+  <data name="PinChromeButton.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Mantener visible la barra superior</value>
+  </data>
+  <data name="PinChromeButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Mantener visible la barra superior</value>
+  </data>
+  <data name="MiskuConfigWarningInfoBar.Title" xml:space="preserve">
+    <value>No se pudo aplicar config.misku</value>
   </data>
 </root>

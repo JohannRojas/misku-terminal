@@ -8,6 +8,7 @@
 #include "../TerminalApp/TerminalPage.h"
 #include "../TerminalApp/AppLogic.h"
 #include "../TerminalApp/AppCommandlineArgs.h"
+#include "../TerminalApp/SettingsLoadEventArgs.h"
 
 using namespace WEX::Logging;
 using namespace WEX::Common;
@@ -25,21 +26,11 @@ namespace winrt
 
 namespace TerminalAppLocalTests
 {
-    // TODO:microsoft/terminal#3838:
-    // Unfortunately, these tests _WILL NOT_ work in our CI. We're waiting for
-    // an updated TAEF that will let us install framework packages when the test
-    // package is deployed. Until then, these tests won't deploy in CI.
     class CommandlineTest
     {
-        // Use a custom AppxManifest to ensure that we can activate winrt types
-        // from our test. This property will tell taef to manually use this as
-        // the AppxManifest for this test class.
-        // This does not yet work for anything XAML-y. See TabTests.cpp for more
-        // details on that.
-        BEGIN_TEST_CLASS(CommandlineTest)
-            TEST_CLASS_PROPERTY(L"RunAs", L"UAP")
-            TEST_CLASS_PROPERTY(L"UAP:AppXManifest", L"TestHostAppXManifest.xml")
-        END_TEST_CLASS()
+        // These parser tests activate model objects but do not create XAML.
+        // Run them on the desktop so CI does not require AppX registration.
+        TEST_CLASS(CommandlineTest);
 
         TEST_METHOD(ParseSimpleCommandline);
         TEST_METHOD(ParseTrickyCommandlines);
@@ -60,6 +51,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ParseFocusPaneArgs);
 
         TEST_METHOD(ParseNoCommandIsNewTab);
+        TEST_METHOD(ParseSessionCommands);
+        TEST_METHOD(MiskuRestoredClientDimensions);
 
         TEST_METHOD(ValidateFirstCommandIsNewTab);
 
@@ -117,75 +110,108 @@ namespace TerminalAppLocalTests
         }
     };
 
+    void CommandlineTest::MiskuRestoredClientDimensions()
+    {
+        const auto settings = CascadiaSettings::LoadDefaults();
+        const auto result = winrt::make<appImpl::SettingsLoadEventArgs>(false, S_OK, L"", nullptr, settings);
+        const auto window = winrt::make_self<appImpl::TerminalWindow>(result, nullptr);
+        for (const auto sidebar : { false, true })
+        {
+            WindowLayout layout;
+            layout.InitialSize({ winrt::Windows::Foundation::Size{ 1200, 800 } });
+            layout.InitialSizeIncludesChrome({ true });
+            layout.SessionSidebarVisible({ sidebar });
+            for (int restart = 0; restart < 5; ++restart)
+            {
+                layout = WindowLayout::FromJson(WindowLayout::ToJson(layout));
+                window->_cachedLayout = layout;
+                const auto normal = window->GetLaunchDimensions(96);
+                const auto scaled = window->GetLaunchDimensions(144);
+                VERIFY_ARE_EQUAL(1200.0f, normal.Width);
+                VERIFY_ARE_EQUAL(800.0f, normal.Height);
+                VERIFY_ARE_EQUAL(1800.0f, scaled.Width);
+                VERIFY_ARE_EQUAL(1200.0f, scaled.Height);
+            }
+        }
+        WindowLayout legacy;
+        legacy.InitialSize({ winrt::Windows::Foundation::Size{ 968, 797 } });
+        legacy.SessionSidebarVisible({ true });
+        window->_cachedLayout = legacy;
+        const auto migrated = window->GetLaunchDimensions(96);
+        VERIFY_ARE_EQUAL(1200.0f, migrated.Width);
+        const auto chrome = ApplicationState::SharedInstance().MiskuTitlebarPinned() ? 40.0f : 3.0f;
+        VERIFY_ARE_EQUAL(797.0f + chrome, migrated.Height);
+    }
+
     void CommandlineTest::ParseSimpleCommandline()
     {
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe" };
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             VERIFY_ARE_EQUAL(1u, commandlines.at(0).Argc());
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"an arg with spaces" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"an arg with spaces" };
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             VERIFY_ARE_EQUAL(2u, commandlines.at(0).Argc());
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"--parameter", L"an arg with spaces" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"--parameter", L"an arg with spaces" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             VERIFY_ARE_EQUAL(3u, commandlines.at(0).Argc());
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-tab" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             VERIFY_ARE_EQUAL(2u, commandlines.at(0).Argc());
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab", L";" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-tab", L";" };
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(2u, commandlines.size());
             VERIFY_ARE_EQUAL(2u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
             VERIFY_ARE_EQUAL("new-tab", commandlines.at(0).Args().at(1));
             VERIFY_ARE_EQUAL(1u, commandlines.at(1).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(1).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(1).Args().at(0));
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L";" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L";" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(2u, commandlines.size());
             VERIFY_ARE_EQUAL(1u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
             VERIFY_ARE_EQUAL(1u, commandlines.at(1).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(1).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(1).Args().at(0));
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L";", L";" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L";", L";" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(3u, commandlines.size());
             VERIFY_ARE_EQUAL(1u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
             VERIFY_ARE_EQUAL(1u, commandlines.at(1).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(1).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(1).Args().at(0));
             VERIFY_ARE_EQUAL(1u, commandlines.at(2).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(2).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(2).Args().at(0));
         }
     }
 
     void CommandlineTest::ParseSimpleHelp()
     {
         static std::vector<std::vector<const wchar_t*>> commandsToTest{
-            { L"wt.exe", L"/?" },
-            { L"wt.exe", L"-?" },
-            { L"wt.exe", L"-h" },
-            { L"wt.exe", L"--help" }
+            { L"misku.exe", L"/?" },
+            { L"misku.exe", L"-?" },
+            { L"misku.exe", L"-h" },
+            { L"misku.exe", L"--help" }
         };
         BEGIN_TEST_METHOD_PROPERTIES()
             TEST_METHOD_PROPERTY(L"Data:testPass", L"{0, 1, 2, 3}")
@@ -200,7 +226,7 @@ namespace TerminalAppLocalTests
         auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
         VERIFY_ARE_EQUAL(1u, commandlines.size());
         VERIFY_ARE_EQUAL(2u, commandlines.at(0).Argc());
-        VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+        VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
 
         for (auto& cmdBlob : commandlines)
         {
@@ -216,9 +242,9 @@ namespace TerminalAppLocalTests
     void CommandlineTest::ParseBadOptions()
     {
         static std::vector<std::vector<const wchar_t*>> commandsToTest{
-            { L"wt.exe", L"/Z" },
-            { L"wt.exe", L"-q" },
-            { L"wt.exe", L"--bar" }
+            { L"misku.exe", L"/Z" },
+            { L"misku.exe", L"-q" },
+            { L"misku.exe", L"--bar" }
         };
         BEGIN_TEST_METHOD_PROPERTIES()
             TEST_METHOD_PROPERTY(L"Data:testPass", L"{0, 1, 2}")
@@ -233,7 +259,7 @@ namespace TerminalAppLocalTests
         auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
         VERIFY_ARE_EQUAL(1u, commandlines.size());
         VERIFY_ARE_EQUAL(2u, commandlines.at(0).Argc());
-        VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+        VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
 
         for (auto& cmdBlob : commandlines)
         {
@@ -249,10 +275,10 @@ namespace TerminalAppLocalTests
     void CommandlineTest::ParseSubcommandHelp()
     {
         static std::vector<std::vector<const wchar_t*>> commandsToTest{
-            { L"wt.exe", L"new-tab", L"-h" },
-            { L"wt.exe", L"new-tab", L"--help" },
-            { L"wt.exe", L"split-pane", L"-h" },
-            { L"wt.exe", L"split-pane", L"--help" }
+            { L"misku.exe", L"new-tab", L"-h" },
+            { L"misku.exe", L"new-tab", L"--help" },
+            { L"misku.exe", L"split-pane", L"-h" },
+            { L"misku.exe", L"split-pane", L"--help" }
         };
         BEGIN_TEST_METHOD_PROPERTIES()
             TEST_METHOD_PROPERTY(L"Data:testPass", L"{0, 1, 2, 3}")
@@ -267,7 +293,7 @@ namespace TerminalAppLocalTests
         auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
         VERIFY_ARE_EQUAL(1u, commandlines.size());
         VERIFY_ARE_EQUAL(3u, commandlines.at(0).Argc());
-        VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+        VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
 
         for (auto& cmdBlob : commandlines)
         {
@@ -283,78 +309,78 @@ namespace TerminalAppLocalTests
     void CommandlineTest::ParseTrickyCommandlines()
     {
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab;" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-tab;" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(2u, commandlines.size());
             VERIFY_ARE_EQUAL(2u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
             VERIFY_ARE_EQUAL("new-tab", commandlines.at(0).Args().at(1));
             VERIFY_ARE_EQUAL(1u, commandlines.at(1).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(1).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(1).Args().at(0));
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L";new-tab;" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L";new-tab;" };
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(3u, commandlines.size());
             VERIFY_ARE_EQUAL(1u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
             VERIFY_ARE_EQUAL(2u, commandlines.at(1).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(1).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(1).Args().at(0));
             VERIFY_ARE_EQUAL("new-tab", commandlines.at(1).Args().at(1));
             VERIFY_ARE_EQUAL(1u, commandlines.at(2).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(2).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(2).Args().at(0));
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe;" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe;" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(2u, commandlines.size());
             VERIFY_ARE_EQUAL(1u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
             VERIFY_ARE_EQUAL(1u, commandlines.at(1).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(1).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(1).Args().at(0));
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe;;" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe;;" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(3u, commandlines.size());
             VERIFY_ARE_EQUAL(1u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
             VERIFY_ARE_EQUAL(1u, commandlines.at(1).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(1).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(1).Args().at(0));
             VERIFY_ARE_EQUAL(1u, commandlines.at(2).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(2).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(2).Args().at(0));
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe;foo;bar;baz" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe;foo;bar;baz" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(4u, commandlines.size());
             VERIFY_ARE_EQUAL(1u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
             VERIFY_ARE_EQUAL(2u, commandlines.at(1).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(1).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(1).Args().at(0));
             VERIFY_ARE_EQUAL("foo", commandlines.at(1).Args().at(1));
             VERIFY_ARE_EQUAL(2u, commandlines.at(2).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(2).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(2).Args().at(0));
             VERIFY_ARE_EQUAL("bar", commandlines.at(2).Args().at(1));
             VERIFY_ARE_EQUAL(2u, commandlines.at(3).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(3).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(3).Args().at(0));
             VERIFY_ARE_EQUAL("baz", commandlines.at(3).Args().at(1));
         }
         {
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"-p", L"u;", L"nt", L"-p", L"u" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"-p", L"u;", L"nt", L"-p", L"u" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(2u, commandlines.size());
             VERIFY_ARE_EQUAL(3u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
             VERIFY_ARE_EQUAL("-p", commandlines.at(0).Args().at(1));
             VERIFY_ARE_EQUAL("u", commandlines.at(0).Args().at(2));
             VERIFY_ARE_EQUAL(4u, commandlines.at(1).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(1).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(1).Args().at(0));
             VERIFY_ARE_EQUAL("nt", commandlines.at(1).Args().at(1));
             VERIFY_ARE_EQUAL("-p", commandlines.at(1).Args().at(2));
             VERIFY_ARE_EQUAL("u", commandlines.at(1).Args().at(3));
@@ -365,7 +391,7 @@ namespace TerminalAppLocalTests
     {
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab", L"powershell.exe", L"This is an arg ; with spaces" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-tab", L"powershell.exe", L"This is an arg ; with spaces" };
             _buildCommandlinesHelper(appArgs, 2u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -407,7 +433,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab", L"powershell.exe", L"This is an arg \\; with spaces" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-tab", L"powershell.exe", L"This is an arg \\; with spaces" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -435,7 +461,7 @@ namespace TerminalAppLocalTests
     void CommandlineTest::ParseBasicCommandlineIntoArgs()
     {
         AppCommandlineArgs appArgs{};
-        std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab" };
+        std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-tab" };
         auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
 
         _buildCommandlinesHelper(appArgs, 1u, rawCommands);
@@ -456,7 +482,7 @@ namespace TerminalAppLocalTests
 
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -478,7 +504,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"--profile", L"cmd" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"--profile", L"cmd" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -501,7 +527,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"--startingDirectory", L"c:\\Foo" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"--startingDirectory", L"c:\\Foo" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -524,7 +550,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"powershell.exe" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"powershell.exe" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -547,7 +573,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"powershell.exe", L"This is an arg with spaces" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"powershell.exe", L"This is an arg with spaces" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -571,7 +597,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"powershell.exe", L"This is an arg with spaces", L"another-arg", L"more spaces in this one" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"powershell.exe", L"This is an arg with spaces", L"another-arg", L"more spaces in this one" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -595,7 +621,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-p", L"Windows PowerShell" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-p", L"Windows PowerShell" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -618,7 +644,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"wsl", L"-d", L"Alpine" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"wsl", L"-d", L"Alpine" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -640,7 +666,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-p", L"1", L"wsl", L"-d", L"Alpine" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-p", L"1", L"wsl", L"-d", L"Alpine" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -664,7 +690,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"--tabColor", L"#009999" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"--tabColor", L"#009999" };
             const auto expectedColor = ::Microsoft::Console::Utils::ColorFromHexString("#009999");
 
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
@@ -689,7 +715,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"--colorScheme", L"Vintage" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"--colorScheme", L"Vintage" };
             const winrt::hstring expectedScheme{ L"Vintage" };
 
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
@@ -725,7 +751,7 @@ namespace TerminalAppLocalTests
 
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -746,7 +772,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-H" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-H" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -767,7 +793,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-V" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-V" };
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
@@ -790,7 +816,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-D" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-D" };
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
@@ -812,7 +838,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-p", L"1", L"wsl", L"-d", L"Alpine" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-p", L"1", L"wsl", L"-d", L"Alpine" };
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
@@ -842,7 +868,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-p", L"1", L"-H", L"wsl", L"-d", L"Alpine" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-p", L"1", L"-H", L"wsl", L"-d", L"Alpine" };
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
@@ -872,7 +898,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-p", L"1", L"wsl", L"-d", L"Alpine", L"-H" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-p", L"1", L"wsl", L"-d", L"Alpine", L"-H" };
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
@@ -915,7 +941,7 @@ namespace TerminalAppLocalTests
         auto spSubcommand = useShortFormSplitPane ? L"sp" : L"split-pane";
 
         AppCommandlineArgs appArgs{};
-        std::vector<const wchar_t*> rawCommands{ L"wt.exe", ntSubcommand, L";", spSubcommand };
+        std::vector<const wchar_t*> rawCommands{ L"misku.exe", ntSubcommand, L";", spSubcommand };
         auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
         _buildCommandlinesHelper(appArgs, 2u, rawCommands);
 
@@ -929,7 +955,7 @@ namespace TerminalAppLocalTests
     {
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -950,7 +976,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"--profile", L"cmd" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"--profile", L"cmd" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -972,7 +998,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"--startingDirectory", L"c:\\Foo" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"--startingDirectory", L"c:\\Foo" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -994,7 +1020,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"powershell.exe" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"powershell.exe" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -1016,7 +1042,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"powershell.exe", L"This is an arg with spaces" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"powershell.exe", L"This is an arg with spaces" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -1038,6 +1064,45 @@ namespace TerminalAppLocalTests
         }
     }
 
+    void CommandlineTest::ParseSessionCommands()
+    {
+        {
+            AppCommandlineArgs appArgs{};
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-session" };
+            _buildCommandlinesHelper(appArgs, 1u, rawCommands);
+
+            // A new session creates its own first tab, so validation must not
+            // prepend a separate NewTab action.
+            VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
+            VERIFY_ARE_EQUAL(ShortcutAction::CreateSession, appArgs._startupActions.at(0).Action());
+            VERIFY_IS_TRUE(appArgs.GetTargetWindow() == "0");
+        }
+        {
+            AppCommandlineArgs appArgs{};
+            std::vector<const wchar_t*> rawCommands{
+                L"misku.exe",
+                L"close-tab",
+                L";",
+                L"close-session",
+                L";",
+                L"next-session",
+                L";",
+                L"previous-session",
+                L";",
+                L"toggle-session-sidebar"
+            };
+            _buildCommandlinesHelper(appArgs, 5u, rawCommands);
+
+            VERIFY_ARE_EQUAL(5u, appArgs._startupActions.size());
+            VERIFY_ARE_EQUAL(ShortcutAction::CloseTab, appArgs._startupActions.at(0).Action());
+            VERIFY_ARE_EQUAL(ShortcutAction::CloseSession, appArgs._startupActions.at(1).Action());
+            VERIFY_ARE_EQUAL(ShortcutAction::NextSession, appArgs._startupActions.at(2).Action());
+            VERIFY_ARE_EQUAL(ShortcutAction::PrevSession, appArgs._startupActions.at(3).Action());
+            VERIFY_ARE_EQUAL(ShortcutAction::ToggleSessionSidebar, appArgs._startupActions.at(4).Action());
+            VERIFY_IS_TRUE(appArgs.GetTargetWindow() == "0");
+        }
+    }
+
     void CommandlineTest::ParseFocusTabArgs()
     {
         BEGIN_TEST_METHOD_PROPERTIES()
@@ -1049,7 +1114,7 @@ namespace TerminalAppLocalTests
 
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -1059,7 +1124,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-n" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-n" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1075,7 +1140,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-p" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-p" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1091,7 +1156,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-t", L"2" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-t", L"2" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1111,12 +1176,12 @@ namespace TerminalAppLocalTests
             Log::Comment(NoThrowString().Format(
                 L"Attempt an invalid combination of flags"));
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-p", L"-n" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-p", L"-n" };
 
             auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
             VERIFY_ARE_EQUAL(1u, commandlines.size());
             VERIFY_ARE_EQUAL(4u, commandlines.at(0).Argc());
-            VERIFY_ARE_EQUAL("wt.exe", commandlines.at(0).Args().at(0));
+            VERIFY_ARE_EQUAL("misku.exe", commandlines.at(0).Args().at(0));
 
             for (auto& cmdBlob : commandlines)
             {
@@ -1141,7 +1206,7 @@ namespace TerminalAppLocalTests
 
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand };
             Log::Comment(NoThrowString().Format(
                 L"Just the subcommand, without a direction, should fail."));
 
@@ -1149,7 +1214,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"left" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"left" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1166,7 +1231,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"right" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"right" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1183,7 +1248,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"up" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"up" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1200,7 +1265,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"down" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"down" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1217,14 +1282,14 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"badDirection" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"badDirection" };
             Log::Comment(NoThrowString().Format(
                 L"move-focus with an invalid direction should fail."));
             _buildCommandlinesExpectFailureHelper(appArgs, 1u, rawCommands);
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"left", L";", subcommand, L"right" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"left", L";", subcommand, L"right" };
             _buildCommandlinesHelper(appArgs, 2u, rawCommands);
 
             VERIFY_ARE_EQUAL(3u, appArgs._startupActions.size());
@@ -1254,7 +1319,7 @@ namespace TerminalAppLocalTests
 
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand };
             Log::Comment(NoThrowString().Format(
                 L"Just the subcommand, without a direction, should fail."));
 
@@ -1262,7 +1327,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"left" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"left" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1279,7 +1344,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"right" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"right" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1296,7 +1361,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"up" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"up" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1313,7 +1378,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"down" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"down" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1330,14 +1395,14 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"badDirection" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"badDirection" };
             Log::Comment(NoThrowString().Format(
                 L"move-pane with an invalid direction should fail."));
             _buildCommandlinesExpectFailureHelper(appArgs, 1u, rawCommands);
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"left", L";", subcommand, L"right" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"left", L";", subcommand, L"right" };
             _buildCommandlinesHelper(appArgs, 2u, rawCommands);
 
             VERIFY_ARE_EQUAL(3u, appArgs._startupActions.size());
@@ -1372,7 +1437,7 @@ namespace TerminalAppLocalTests
 
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand };
             Log::Comment(NoThrowString().Format(
                 L"Just the subcommand, without a target, should fail."));
 
@@ -1380,7 +1445,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"left" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"left" };
 
             Log::Comment(NoThrowString().Format(
                 L"focus-pane without a  target should fail."));
@@ -1388,7 +1453,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"1" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"1" };
 
             Log::Comment(NoThrowString().Format(
                 L"focus-pane without a target should fail."));
@@ -1396,7 +1461,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"--target", L"0" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"--target", L"0" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1413,7 +1478,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-t", L"100" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-t", L"100" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1430,14 +1495,14 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"--target", L"-1" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"--target", L"-1" };
             Log::Comment(NoThrowString().Format(
                 L"focus-pane with an invalid target should fail."));
             _buildCommandlinesExpectFailureHelper(appArgs, 1u, rawCommands);
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"move-focus", L"left", L";", subcommand, L"-t", L"1" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"move-focus", L"left", L";", subcommand, L"-t", L"1" };
             _buildCommandlinesHelper(appArgs, 2u, rawCommands);
 
             VERIFY_ARE_EQUAL(3u, appArgs._startupActions.size());
@@ -1466,7 +1531,7 @@ namespace TerminalAppLocalTests
     void CommandlineTest::ValidateFirstCommandIsNewTab()
     {
         AppCommandlineArgs appArgs{};
-        std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"split-pane", L";", L"split-pane" };
+        std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"split-pane", L";", L"split-pane" };
         auto commandlines = AppCommandlineArgs::BuildCommands(rawCommands);
         _buildCommandlinesHelper(appArgs, 2u, rawCommands);
 
@@ -1485,7 +1550,7 @@ namespace TerminalAppLocalTests
 
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab", L";", L"slpit-pane" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-tab", L";", L"slpit-pane" };
             _buildCommandlinesHelper(appArgs, 2u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1528,7 +1593,7 @@ namespace TerminalAppLocalTests
             Log::Comment(NoThrowString().Format(
                 L"Pass a flag that would be accepted by split-pane, but isn't accepted by new-tab"));
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"slpit-pane", L"-H" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"slpit-pane", L"-H" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -1548,7 +1613,7 @@ namespace TerminalAppLocalTests
     {
         { // one parsing terminator, new-tab command
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab", L"-d", L"C:\\", L"--", L"wsl", L"-d", L"Alpine" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-tab", L"-d", L"C:\\", L"--", L"wsl", L"-d", L"Alpine" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -1565,7 +1630,7 @@ namespace TerminalAppLocalTests
         }
         { // two parsing terminators, new-tab command
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"new-tab", L"-d", L"C:\\", L"--", L"wsl", L"-d", L"Alpine", L"--", L"sleep", L"10" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"new-tab", L"-d", L"C:\\", L"--", L"wsl", L"-d", L"Alpine", L"--", L"sleep", L"10" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -1582,7 +1647,7 @@ namespace TerminalAppLocalTests
         }
         { // two parsing terminators, *no* command
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"-d", L"C:\\", L"--", L"wsl", L"-d", L"Alpine", L"--", L"sleep", L"10" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"-d", L"C:\\", L"--", L"wsl", L"-d", L"Alpine", L"--", L"sleep", L"10" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(1u, appArgs._startupActions.size());
@@ -1668,14 +1733,14 @@ namespace TerminalAppLocalTests
     {
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_FALSE(appArgs.GetLaunchMode().has_value());
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"-F" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"-F" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1683,7 +1748,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"--fullscreen" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"--fullscreen" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1691,7 +1756,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"-M" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"-M" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1699,7 +1764,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"--maximized" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"--maximized" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1707,7 +1772,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"-f" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"-f" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1715,7 +1780,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"--focus" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"--focus" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1723,7 +1788,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"-fM" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"-fM" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1731,7 +1796,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"--maximized", L"--focus" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"--maximized", L"--focus" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1739,7 +1804,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"--maximized", L"--focus", L"--focus" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"--maximized", L"--focus", L"--focus" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1747,7 +1812,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"--maximized", L"--focus", L"--maximized" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"--maximized", L"--focus", L"--maximized" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1761,7 +1826,7 @@ namespace TerminalAppLocalTests
             Log::Comment(NoThrowString().Format(L"Pass a launch mode and profile"));
 
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"-M", L"--profile", L"cmd" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"-M", L"--profile", L"cmd" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1786,7 +1851,7 @@ namespace TerminalAppLocalTests
             Log::Comment(NoThrowString().Format(L"Pass a launch mode and command line"));
 
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", L"-M", L"powershell.exe" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", L"-M", L"powershell.exe" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_IS_TRUE(appArgs.GetLaunchMode().has_value());
@@ -1820,7 +1885,7 @@ namespace TerminalAppLocalTests
 
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1841,7 +1906,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-s", L".3" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-s", L".3" };
             _buildCommandlinesHelper(appArgs, 1u, rawCommands);
 
             VERIFY_ARE_EQUAL(2u, appArgs._startupActions.size());
@@ -1862,7 +1927,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-s", L".3", L";", subcommand };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-s", L".3", L";", subcommand };
             _buildCommandlinesHelper(appArgs, 2u, rawCommands);
 
             VERIFY_ARE_EQUAL(3u, appArgs._startupActions.size());
@@ -1896,7 +1961,7 @@ namespace TerminalAppLocalTests
         }
         {
             AppCommandlineArgs appArgs{};
-            std::vector<const wchar_t*> rawCommands{ L"wt.exe", subcommand, L"-s", L".3", L";", subcommand, L"-s", L".7" };
+            std::vector<const wchar_t*> rawCommands{ L"misku.exe", subcommand, L"-s", L".3", L";", subcommand, L"-s", L".7" };
             _buildCommandlinesHelper(appArgs, 2u, rawCommands);
 
             VERIFY_ARE_EQUAL(3u, appArgs._startupActions.size());

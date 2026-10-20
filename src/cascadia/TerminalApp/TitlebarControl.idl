@@ -28,7 +28,16 @@ namespace TerminalApp
         void PressButton(CaptionButton button);
         void ClickButton(CaptionButton button);
         void ReleaseButtons();
+        void SetNonClientPointerOver(Boolean pointerOver);
+        void SetWindowInteractionActive(Boolean active);
         Single CaptionButtonWidth { get; };
+        Single AutoHideRevealHeight { get; };
+        Boolean ChromeVisible { get; };
+        Boolean ChromePinned { get; };
+        event Windows.Foundation.EventHandler<Object> ChromePinnedChanged;
+        event Windows.Foundation.EventHandler<Object> ChromeGeometryChanged;
+        Windows.UI.Xaml.FrameworkElement PinButton { get; };
+        Windows.UI.Xaml.FrameworkElement CaptionButtons { get; };
         Boolean Focused { get; set; };
 
         IInspectable Content;

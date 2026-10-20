@@ -1911,6 +1911,21 @@ namespace SettingsModelUnitTests
         const auto settings{ CascadiaSettings::LoadDefaults() };
         VERIFY_ARE_EQUAL(settings.ActiveProfiles().Size(), settings.AllProfiles().Size());
         VERIFY_ARE_EQUAL(settings.AllProfiles().Size(), 2u);
+        VERIFY_ARE_EQUAL(FirstWindowPreference::PersistedLayout, settings.GlobalSettings().FirstWindowPreference());
+
+        const auto verifyBinding = [&](const KeyChord& keyChord, const ShortcutAction expectedAction) {
+            const auto command{ settings.ActionMap().GetActionByKeyChord(keyChord) };
+            VERIFY_IS_NOT_NULL(command);
+            VERIFY_ARE_EQUAL(expectedAction, command.ActionAndArgs().Action());
+        };
+
+        verifyBinding({ VirtualKeyModifiers::Control, static_cast<int32_t>('T'), 0 }, ShortcutAction::NewTab);
+        verifyBinding({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Shift, static_cast<int32_t>('T'), 0 }, ShortcutAction::CreateSession);
+        verifyBinding({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Menu, VK_NEXT, 0 }, ShortcutAction::NextSession);
+        verifyBinding({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Menu, VK_PRIOR, 0 }, ShortcutAction::PrevSession);
+        verifyBinding({ VirtualKeyModifiers::Control, static_cast<int32_t>('B'), 0 }, ShortcutAction::ToggleSessionSidebar);
+        VERIFY_IS_NULL(settings.ActionMap().GetActionByKeyChord({ VirtualKeyModifiers::Control, static_cast<int32_t>('W'), 0 }));
+        verifyBinding({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Shift, static_cast<int32_t>('W'), 0 }, ShortcutAction::ClosePane);
     }
 
     void DeserializationTests::TestInheritedCommand()

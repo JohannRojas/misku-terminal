@@ -2354,6 +2354,31 @@ namespace winrt::TerminalApp::implementation
     {
         constexpr auto lightnessThreshold = 0.6f;
         const til::color color{ uiColor };
+        auto deselectedTabColor = color.with_alpha(77);
+        if (!GetTabColor().has_value() && _unfocusedThemeColor != nullptr)
+        {
+            const Media::Brush terminalBrush{ _BackgroundBrush() };
+            if (const auto themeBrush{ _unfocusedThemeColor.Evaluate(Application::Current().Resources(), terminalBrush, false) })
+            {
+                deselectedTabColor = til::color{ ThemeColor::ColorFromBrush(themeBrush) }.with_alpha(_unfocusedThemeColor.UnfocusedTabOpacity());
+            }
+        }
+
+        // A selection change updates every tab's theme. Reuse the dictionaries
+        // when their evaluated colors are unchanged, including dynamic accent
+        // and terminal backgrounds. Only the two changed selection states need
+        // the WinUI 2.8 visual-state workaround.
+        const std::array colors{ color, deselectedTabColor, _tabRowColor };
+        const auto selected = TabViewItem().IsSelected();
+        if (_appliedTabColors && *_appliedTabColors == colors)
+        {
+            if (_appliedTabColorSelected != selected)
+            {
+                _RefreshVisualState();
+                _appliedTabColorSelected = selected;
+            }
+            return;
+        }
         Media::SolidColorBrush selectedTabBrush{};
         Media::SolidColorBrush deselectedTabBrush{};
         Media::SolidColorBrush fontBrush{};
@@ -2405,32 +2430,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         selectedTabBrush.Color(color);
-
-        // Start with the current tab color, set to Opacity=.3
-        auto deselectedTabColor = color.with_alpha(77); // 255 * .3 = 77
-
-        // If we DON'T have a color set from the color picker, or the profile's
-        // tabColor, but if we have an unfocused color in the theme, use the
-        // unfocused theme color here instead.
-        if (!GetTabColor().has_value() &&
-            _unfocusedThemeColor != nullptr)
-        {
-            // Safely get the active control's brush.
-            const Media::Brush terminalBrush{ _BackgroundBrush() };
-
-            // Get the color of the brush.
-            if (const auto themeBrush{ _unfocusedThemeColor.Evaluate(Application::Current().Resources(), terminalBrush, false) })
-            {
-                // We did figure out the brush. Get the color out of it. If it
-                // was "accent" or "terminalBackground", then we're gonna set
-                // the alpha to .3 manually here.
-                // (ThemeColor::UnfocusedTabOpacity will do this for us). If the
-                // user sets both unfocused and focused tab.background to
-                // terminalBackground, this will allow for some differentiation
-                // (and is generally just sensible).
-                deselectedTabColor = til::color{ ThemeColor::ColorFromBrush(themeBrush) }.with_alpha(_unfocusedThemeColor.UnfocusedTabOpacity());
-            }
-        }
 
         // currently if a tab has a custom color, a deselected state is
         // signified by using the same color with a bit of transparency
@@ -2523,6 +2522,9 @@ namespace winrt::TerminalApp::implementation
         }
 
         _RefreshVisualState();
+        _appliedTabColors = colors;
+        _appliedTabColorSelected = selected;
+        _tabBackgroundCleared = false;
     }
 
     // Method Description:
@@ -2534,6 +2536,10 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void Tab::_ClearTabBackgroundColor()
     {
+        if (_tabBackgroundCleared)
+        {
+            return;
+        }
         static const winrt::hstring keys[] = {
             // TabViewItem.Background
             L"TabViewItemHeaderBackground",
@@ -2593,6 +2599,8 @@ namespace winrt::TerminalApp::implementation
         TabViewItem().Background(WUX::Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
 
         _RefreshVisualState();
+        _appliedTabColors.reset();
+        _tabBackgroundCleared = true;
     }
 
     // Method Description:

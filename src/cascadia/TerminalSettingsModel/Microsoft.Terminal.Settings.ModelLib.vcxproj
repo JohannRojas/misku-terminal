@@ -79,6 +79,7 @@
     </ClInclude>
     <ClInclude Include="DynamicProfileUtils.h" />
     <ClInclude Include="FileUtils.h" />
+    <ClInclude Include="MiskuConfig.h" />
     <ClInclude Include="GlobalAppSettings.h">
       <DependentUpon>GlobalAppSettings.idl</DependentUpon>
     </ClInclude>
@@ -158,6 +159,7 @@
     </ClCompile>
     <ClCompile Include="DynamicProfileUtils.cpp" />
     <ClCompile Include="FileUtils.cpp" />
+    <ClCompile Include="MiskuConfig.cpp" />
     <ClCompile Include="GlobalAppSettings.cpp">
       <DependentUpon>GlobalAppSettings.idl</DependentUpon>
     </ClCompile>

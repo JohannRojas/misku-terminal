@@ -50,6 +50,492 @@ namespace winrt
 
 namespace winrt::TerminalApp::implementation
 {
+    uintptr_t TerminalPage::_GetTabSessionKey(const TerminalApp::Tab& tab) noexcept
+    {
+        return tab ? reinterpret_cast<uintptr_t>(winrt::get_abi(tab)) : 0;
+    }
+
+    void TerminalPage::_EnsureDefaultSession()
+    {
+        if (_tabSessions.empty())
+        {
+            _CreateSession();
+        }
+    }
+
+    uint32_t TerminalPage::_CreateSession(winrt::hstring name)
+    {
+        const auto sessionId = _nextTabSessionId++;
+        if (name.empty())
+        {
+            name = RS_fmt(L"SessionDefaultName", sessionId);
+        }
+
+        _tabSessions.push_back(TabSessionState{ sessionId, std::move(name) });
+        _activeTabSessionId = sessionId;
+        _RefreshSessionSidebar();
+        return sessionId;
+    }
+
+    bool TerminalPage::_CreateSessionWithNewTab()
+    {
+        _EnsureDefaultSession();
+
+        const auto previousSessionId = _activeTabSessionId;
+        const auto canReuseEmptySession = _tabs.Size() == 0 &&
+                                          _tabSessions.size() == 1 &&
+                                          _GetSessionTabCount(_activeTabSessionId) == 0;
+        const auto sessionId = canReuseEmptySession ? _activeTabSessionId : _CreateSession();
+
+        LOG_IF_FAILED(_OpenNewTab(nullptr));
+        if (_GetSessionTabCount(sessionId) != 0)
+        {
+            return true;
+        }
+
+        // An auto-elevated profile can open in a different window. Avoid
+        // leaving an empty session behind in this window in that case.
+        if (!canReuseEmptySession)
+        {
+            _RemoveSessionIfEmpty(sessionId);
+            _SwitchToSession(previousSessionId);
+        }
+        return false;
+    }
+
+    bool TerminalPage::_SelectAdjacentSession(const bool moveForward)
+    {
+        if (_tabSessions.size() < 2)
+        {
+            return false;
+        }
+
+        const auto currentIndex = _GetSessionIndex(_activeTabSessionId).value_or(0);
+        const auto nextIndex = moveForward ?
+                                   (currentIndex + 1) % _tabSessions.size() :
+                                   (currentIndex + _tabSessions.size() - 1) % _tabSessions.size();
+        _SwitchToSession(_tabSessions[nextIndex].Id);
+        return true;
+    }
+
+    std::optional<size_t> TerminalPage::_GetSessionIndex(const uint32_t sessionId) const noexcept
+    {
+        for (size_t i = 0; i < _tabSessions.size(); ++i)
+        {
+            if (_tabSessions[i].Id == sessionId)
+            {
+                return i;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<uint32_t> TerminalPage::_GetSessionForTab(const TerminalApp::Tab& tab) const noexcept
+    {
+        const auto key = _GetTabSessionKey(tab);
+        if (const auto found = _tabSessionIds.find(key); found != _tabSessionIds.end())
+        {
+            return found->second;
+        }
+        return std::nullopt;
+    }
+
+    uint32_t TerminalPage::_GetSessionTabCount(const uint32_t sessionId) const noexcept
+    {
+        uint32_t count = 0;
+        for (const auto& tab : _tabs)
+        {
+            if (_GetSessionForTab(tab).value_or(0) == sessionId)
+            {
+                ++count;
+            }
+        }
+        return count;
+    }
+
+    TerminalApp::Tab TerminalPage::_GetMostRecentTabInSession(const uint32_t sessionId) const noexcept
+    {
+        for (const auto& tab : _mruTabs)
+        {
+            if (_GetSessionForTab(tab).value_or(0) == sessionId)
+            {
+                return tab;
+            }
+        }
+
+        for (const auto& tab : _tabs)
+        {
+            if (_GetSessionForTab(tab).value_or(0) == sessionId)
+            {
+                return tab;
+            }
+        }
+        return nullptr;
+    }
+
+    void TerminalPage::_ApplySessionVisibility(const bool focusTab)
+    {
+        if (!_tabView)
+        {
+            return;
+        }
+
+        for (const auto& tab : _tabs)
+        {
+            const auto isInActiveSession = _GetSessionForTab(tab).value_or(_activeTabSessionId) == _activeTabSessionId;
+            const auto visibility = isInActiveSession ? Visibility::Visible : Visibility::Collapsed;
+            if (tab.TabViewItem().Visibility() != visibility)
+            {
+                tab.TabViewItem().Visibility(visibility);
+            }
+        }
+
+        const auto focusedTab = _GetFocusedTab();
+        const auto focusedSession = focusedTab ? _GetSessionForTab(focusedTab) : std::nullopt;
+        if (!focusedTab || focusedSession.value_or(0) != _activeTabSessionId)
+        {
+            if (const auto nextTab = _GetMostRecentTabInSession(_activeTabSessionId))
+            {
+                _tabView.SelectedItem(nextTab.TabViewItem());
+                if (focusTab && _startupState == StartupState::InStartup)
+                {
+                    _UpdatedSelectedTab(nextTab);
+                }
+            }
+            else
+            {
+                _tabContent.Children().Clear();
+            }
+        }
+    }
+
+    void TerminalPage::_SetSessionSidebarVisible(const bool visible)
+    {
+        _isSessionSidebarVisible = visible;
+
+        SessionSidebar().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+        SessionSidebarColumn().Width(GridLengthHelper::FromValueAndType(visible ? SessionSidebarWidth : 0.0,
+                                                                        GridUnitType::Pixel));
+
+        // When tabs live in the custom titlebar, the row is reparented outside
+        // MainContentGrid and uses a left margin to stay aligned with the
+        // sidebar. Keep that margin synchronized with the sidebar state.
+        if (_tabRow && _settings.GlobalSettings().ShowTabsInTitlebar())
+        {
+            _tabRow.Margin(ThicknessHelper::FromLengths(visible ? SessionSidebarWidth : 0.0, 0, 0, 0));
+        }
+    }
+
+    void TerminalPage::_SwitchToSession(const uint32_t sessionId, const bool focusTab)
+    {
+        if (!_GetSessionIndex(sessionId).has_value())
+        {
+            return;
+        }
+
+        // Refreshing the sidebar selects the active ListViewItem. XAML can
+        // deliver that SelectionChanged notification after the refresh guard
+        // has been released, so ignore a no-op selection to avoid rebuilding
+        // the list recursively.
+        if (_activeTabSessionId == sessionId)
+        {
+            return;
+        }
+
+        _activeTabSessionId = sessionId;
+        _ApplySessionVisibility(focusTab);
+        _RefreshSessionSidebar();
+    }
+
+    void TerminalPage::_RefreshSessionSidebar()
+    {
+        if (!_sessionList)
+        {
+            return;
+        }
+
+        _updatingSessionList = true;
+        auto resetUpdating = wil::scope_exit([&]() noexcept { _updatingSessionList = false; });
+
+        // Count all tabs once. Keeping this O(tabs + sessions) matters because
+        // this path also runs after routine tab operations.
+        std::unordered_map<uint32_t, uint32_t> sessionTabCounts;
+        sessionTabCounts.reserve(_tabSessions.size());
+        std::unordered_set<uint32_t> liveSessionIds;
+        liveSessionIds.reserve(_tabSessions.size());
+        for (const auto& session : _tabSessions)
+        {
+            liveSessionIds.emplace(session.Id);
+        }
+        for (const auto& tab : _tabs)
+        {
+            if (const auto sessionId = _GetSessionForTab(tab))
+            {
+                ++sessionTabCounts[*sessionId];
+            }
+        }
+        const auto focusedTab = _GetFocusedTab();
+        const auto focusedSessionId = focusedTab ? _GetSessionForTab(focusedTab) : std::nullopt;
+
+        // Session changes are rare, while tab titles/counts can update often.
+        // Reuse the existing controls so a routine tab operation does not
+        // allocate an entire sidebar tree and five flyout handlers per session.
+        for (auto it = _sessionSidebarItems.begin(); it != _sessionSidebarItems.end();)
+        {
+            if (liveSessionIds.contains(it->first))
+            {
+                ++it;
+                continue;
+            }
+
+            uint32_t itemIndex = 0;
+            if (_sessionList.Items().IndexOf(it->second.Item, itemIndex))
+            {
+                _sessionList.Items().RemoveAt(itemIndex);
+            }
+            it = _sessionSidebarItems.erase(it);
+        }
+
+        IInspectable selectedItem{ nullptr };
+
+        for (const auto& session : _tabSessions)
+        {
+            auto found = _sessionSidebarItems.find(session.Id);
+            if (found == _sessionSidebarItems.end())
+            {
+                SessionSidebarItemState state;
+                state.Item = WUX::Controls::ListViewItem{};
+                state.Item.Tag(winrt::box_value(session.Id));
+
+                WUX::Controls::Grid content;
+                WUX::Controls::ColumnDefinition iconColumn;
+                WUX::Controls::ColumnDefinition titleColumn;
+                WUX::Controls::ColumnDefinition countColumn;
+                iconColumn.Width(GridLengthHelper::Auto());
+                titleColumn.Width(GridLengthHelper::FromValueAndType(1, GridUnitType::Star));
+                countColumn.Width(GridLengthHelper::Auto());
+                content.ColumnDefinitions().Append(iconColumn);
+                content.ColumnDefinitions().Append(titleColumn);
+                content.ColumnDefinitions().Append(countColumn);
+
+                WUX::Controls::SymbolIcon icon;
+                icon.Symbol(WUX::Controls::Symbol::Folder);
+                icon.VerticalAlignment(VerticalAlignment::Center);
+                content.Children().Append(icon);
+
+                state.Title = WUX::Controls::TextBlock{};
+                state.Title.Margin(ThicknessHelper::FromLengths(10, 0, 8, 0));
+                state.Title.VerticalAlignment(VerticalAlignment::Center);
+                state.Title.TextTrimming(TextTrimming::CharacterEllipsis);
+                WUX::Controls::Grid::SetColumn(state.Title, 1);
+                content.Children().Append(state.Title);
+
+                state.Count = WUX::Controls::TextBlock{};
+                state.Count.VerticalAlignment(VerticalAlignment::Center);
+                state.Count.FontSize(11);
+                state.Count.Opacity(0.72);
+                WUX::Controls::Grid::SetColumn(state.Count, 2);
+                content.Children().Append(state.Count);
+                state.Item.Content(content);
+
+                WUX::Controls::MenuFlyout contextMenu;
+                state.MoveTabItem = WUX::Controls::MenuFlyoutItem{};
+                state.MoveTabItem.Text(RS_(L"MoveActiveTabToSessionMenuItem"));
+                state.MoveTabItem.Click([weakThis{ get_weak() }, sessionId = session.Id](auto&&, auto&&) {
+                    if (const auto page = weakThis.get())
+                    {
+                        page->_MoveFocusedTabToSession(sessionId);
+                    }
+                });
+                contextMenu.Items().Append(state.MoveTabItem);
+
+                WUX::Controls::MenuFlyoutItem renameItem;
+                renameItem.Text(RS_(L"RenameSessionMenuItem"));
+                renameItem.Click([weakThis{ get_weak() }, sessionId = session.Id](auto&&, auto&&) {
+                    if (const auto page = weakThis.get())
+                    {
+                        page->_RenameSession(sessionId);
+                    }
+                });
+                contextMenu.Items().Append(renameItem);
+
+                state.CloseItem = WUX::Controls::MenuFlyoutItem{};
+                state.CloseItem.Text(RS_(L"CloseSessionMenuItem"));
+                state.CloseItem.Click([weakThis{ get_weak() }, sessionId = session.Id](auto&&, auto&&) {
+                    if (const auto page = weakThis.get())
+                    {
+                        page->_CloseSession(sessionId);
+                    }
+                });
+                contextMenu.Items().Append(state.CloseItem);
+                state.Item.ContextFlyout(contextMenu);
+
+                _sessionList.Items().Append(state.Item);
+                found = _sessionSidebarItems.emplace(session.Id, std::move(state)).first;
+            }
+
+            const auto& itemState = found->second;
+            const auto count = sessionTabCounts.find(session.Id);
+            if (itemState.Title.Text() != session.Name)
+            {
+                itemState.Title.Text(session.Name);
+                WUX::Automation::AutomationProperties::SetName(itemState.Item, session.Name);
+            }
+            const auto countText = winrt::to_hstring(count == sessionTabCounts.end() ? 0u : count->second);
+            if (itemState.Count.Text() != countText)
+            {
+                itemState.Count.Text(countText);
+            }
+            itemState.MoveTabItem.IsEnabled(focusedTab && focusedSessionId.value_or(0) != session.Id);
+            itemState.CloseItem.IsEnabled(_tabSessions.size() > 1);
+
+            if (session.Id == _activeTabSessionId)
+            {
+                selectedItem = itemState.Item;
+            }
+        }
+
+        if (selectedItem && _sessionList.SelectedItem() != selectedItem)
+        {
+            _sessionList.SelectedItem(selectedItem);
+        }
+        if (_sessionCountText)
+        {
+            _sessionCountText.Text(winrt::to_hstring(_tabSessions.size()));
+        }
+    }
+
+    void TerminalPage::_RemoveSessionIfEmpty(const uint32_t sessionId)
+    {
+        if (_tabSessions.size() <= 1 || _GetSessionTabCount(sessionId) != 0)
+        {
+            return;
+        }
+
+        const auto index = _GetSessionIndex(sessionId);
+        if (!index)
+        {
+            return;
+        }
+
+        const auto wasActive = _activeTabSessionId == sessionId;
+        _tabSessions.erase(_tabSessions.begin() + *index);
+        if (wasActive)
+        {
+            const auto replacementIndex = std::min(*index, _tabSessions.size() - 1);
+            _activeTabSessionId = _tabSessions[replacementIndex].Id;
+        }
+        _RefreshSessionSidebar();
+    }
+
+    void TerminalPage::_MoveFocusedTabToSession(const uint32_t sessionId)
+    {
+        const auto tab = _GetFocusedTab();
+        const auto sourceSessionId = tab ? _GetSessionForTab(tab) : std::nullopt;
+        if (!tab || !sourceSessionId || *sourceSessionId == sessionId || !_GetSessionIndex(sessionId))
+        {
+            return;
+        }
+
+        _tabSessionIds[_GetTabSessionKey(tab)] = sessionId;
+        _activeTabSessionId = sessionId;
+        _RemoveSessionIfEmpty(*sourceSessionId);
+        _ApplySessionVisibility(false);
+        _tabView.SelectedItem(tab.TabViewItem());
+        _RefreshSessionSidebar();
+    }
+
+    void TerminalPage::_NewSessionButtonOnClick(const IInspectable&, const WUX::RoutedEventArgs&)
+    {
+        _CreateSessionWithNewTab();
+    }
+
+    void TerminalPage::_SessionListSelectionChanged(const IInspectable&, const WUX::Controls::SelectionChangedEventArgs&)
+    {
+        if (_updatingSessionList || !_sessionList)
+        {
+            return;
+        }
+
+        if (const auto item = _sessionList.SelectedItem().try_as<WUX::Controls::ListViewItem>())
+        {
+            _SwitchToSession(winrt::unbox_value<uint32_t>(item.Tag()));
+        }
+    }
+
+    safe_void_coroutine TerminalPage::_RenameSession(const uint32_t sessionId)
+    {
+        const auto index = _GetSessionIndex(sessionId);
+        if (!index)
+        {
+            co_return;
+        }
+
+        const auto textBox = FindName(L"RenameSessionTextBox").as<WUX::Controls::TextBox>();
+        textBox.Text(_tabSessions[*index].Name);
+        textBox.SelectAll();
+
+        const auto result = co_await _ShowDialogHelper(L"RenameSessionDialog");
+        if (result == WUX::Controls::ContentDialogResult::Primary)
+        {
+            const auto name = textBox.Text();
+            if (!name.empty())
+            {
+                if (const auto refreshedIndex = _GetSessionIndex(sessionId))
+                {
+                    _tabSessions[*refreshedIndex].Name = name;
+                    _RefreshSessionSidebar();
+                }
+            }
+        }
+    }
+
+    safe_void_coroutine TerminalPage::_CloseSession(const uint32_t sessionId)
+    {
+        if (_tabSessions.size() <= 1)
+        {
+            co_return;
+        }
+
+        std::vector<TerminalApp::Tab> tabs;
+        for (const auto& tab : _tabs)
+        {
+            if (_GetSessionForTab(tab).value_or(0) == sessionId)
+            {
+                tabs.push_back(tab);
+            }
+        }
+
+        if (tabs.empty())
+        {
+            _RemoveSessionIfEmpty(sessionId);
+            _ApplySessionVisibility();
+            co_return;
+        }
+
+        const auto weak = get_weak();
+        if (_settings.GlobalSettings().ConfirmOnClose() != ConfirmOnClose::Never)
+        {
+            const auto result = co_await _ShowConfirmCloseDialog(ConfirmCloseDialogKind::MultipleTabs);
+            if (!weak.get() || result != WUX::Controls::ContentDialogResult::Primary)
+            {
+                co_return;
+            }
+        }
+
+        for (const auto& tab : tabs)
+        {
+            if (const auto page = weak.get())
+            {
+                co_await page->_HandleCloseTabRequested(tab, true);
+            }
+            else
+            {
+                co_return;
+            }
+        }
+    }
+
     // Method Description:
     // - Open a new tab. This will create the TerminalControl hosting the
     //   terminal, and add a new Tab to our list of tabs. The method can
@@ -101,6 +587,17 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition)
     {
         newTabImpl->Initialize();
+        _EnsureDefaultSession();
+        auto sessionId = _activeTabSessionId;
+        if (_startupTabSessionCursor < _startupTabSessionIndices.size())
+        {
+            const auto sessionIndex = _startupTabSessionIndices[_startupTabSessionCursor++];
+            if (sessionIndex < _tabSessions.size())
+            {
+                sessionId = _tabSessions[sessionIndex].Id;
+            }
+        }
+        _tabSessionIds[_GetTabSessionKey(*newTabImpl)] = sessionId;
 
         // If insert position is not passed, calculate it
         if (insertPosition == -1)
@@ -165,6 +662,9 @@ namespace winrt::TerminalApp::implementation
 
         auto tabViewItem = newTabImpl->TabViewItem();
         _tabView.TabItems().InsertAt(insertPosition, tabViewItem);
+        tabViewItem.Visibility(Visibility::Visible);
+        _ApplySessionVisibility(false);
+        _RefreshSessionSidebar();
 
         // Set this tab's icon to the icon from the content
         _UpdateTabIcon(*newTabImpl);
@@ -492,6 +992,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        const auto removedSessionId = _GetSessionForTab(tab).value_or(_activeTabSessionId);
+
         // We use _removing flag to suppress _OnTabSelectionChanged events
         // that might get triggered while removing
         _removing = true;
@@ -528,7 +1030,9 @@ namespace winrt::TerminalApp::implementation
 
         _tabs.RemoveAt(tabIndex);
         _tabView.TabItems().RemoveAt(tabIndex);
+        _tabSessionIds.erase(_GetTabSessionKey(tab));
         _UpdateTabIndices();
+        _RemoveSessionIfEmpty(removedSessionId);
 
         // To close the window here, we need to close the hosting window.
         if (_tabs.Size() == 0)
@@ -546,9 +1050,20 @@ namespace winrt::TerminalApp::implementation
             // 2. In fullscreen (GH#5799) and focus (GH#7916) modes the _OnTabItemsChanged is not fired
             // 3. When rearranging tabs (GH#7916) _OnTabItemsChanged is suppressed
 
-            const auto newSelectedTab = _mruTabs.GetAt(0);
+            auto newSelectedTab = _GetMostRecentTabInSession(_activeTabSessionId);
+            if (!newSelectedTab)
+            {
+                newSelectedTab = _mruTabs.GetAt(0);
+                _activeTabSessionId = _GetSessionForTab(newSelectedTab).value_or(_activeTabSessionId);
+            }
             _UpdatedSelectedTab(newSelectedTab);
             _tabView.SelectedItem(newSelectedTab.TabViewItem());
+        }
+
+        if (_tabs.Size() > 0)
+        {
+            _ApplySessionVisibility(false);
+            _RefreshSessionSidebar();
         }
 
         // GH#5559 - If we were in the middle of a drag/drop, end it by clearing
@@ -569,22 +1084,57 @@ namespace winrt::TerminalApp::implementation
         const auto tabSwitchMode = customTabSwitcherMode ? customTabSwitcherMode.Value() : _settings.GlobalSettings().TabSwitcherMode();
         if (tabSwitchMode == TabSwitcherMode::Disabled)
         {
-            auto tabCount = _tabs.Size();
-            // Wraparound math. By adding tabCount and then calculating
-            // modulo tabCount, we clamp the values to the range [0,
-            // tabCount) while still supporting moving leftward from 0 to
-            // tabCount - 1.
-            const auto newTabIndex = ((tabCount + index + (bMoveRight ? 1 : -1)) % tabCount);
-            _SelectTab(newTabIndex);
+            std::vector<uint32_t> sessionTabIndices;
+            for (uint32_t i = 0; i < _tabs.Size(); ++i)
+            {
+                if (_GetSessionForTab(_tabs.GetAt(i)).value_or(0) == _activeTabSessionId)
+                {
+                    sessionTabIndices.push_back(i);
+                }
+            }
+
+            if (!sessionTabIndices.empty())
+            {
+                const auto current = std::find(sessionTabIndices.begin(), sessionTabIndices.end(), index);
+                const auto currentPosition = current == sessionTabIndices.end() ? 0 : std::distance(sessionTabIndices.begin(), current);
+                const auto tabCount = gsl::narrow_cast<int64_t>(sessionTabIndices.size());
+                const auto newPosition = (tabCount + currentPosition + (bMoveRight ? 1 : -1)) % tabCount;
+                _SelectTab(sessionTabIndices[gsl::narrow_cast<size_t>(newPosition)]);
+            }
         }
         else
         {
+            auto sessionTabs = winrt::single_threaded_observable_vector<TerminalApp::Tab>();
+            auto sessionMruTabs = winrt::single_threaded_observable_vector<TerminalApp::Tab>();
+            uint32_t sessionTabIndex = 0;
+
+            for (uint32_t i = 0; i < _tabs.Size(); ++i)
+            {
+                const auto tab = _tabs.GetAt(i);
+                if (_GetSessionForTab(tab).value_or(0) == _activeTabSessionId)
+                {
+                    if (i == index)
+                    {
+                        sessionTabIndex = sessionTabs.Size();
+                    }
+                    sessionTabs.Append(tab);
+                }
+            }
+
+            for (const auto& tab : _mruTabs)
+            {
+                if (_GetSessionForTab(tab).value_or(0) == _activeTabSessionId)
+                {
+                    sessionMruTabs.Append(tab);
+                }
+            }
+
             const auto p = LoadCommandPalette();
-            p.SetTabs(_tabs, _mruTabs);
+            p.SetTabs(sessionTabs, sessionMruTabs);
 
             // Otherwise, set up the tab switcher in the selected mode, with
             // the given ordering, and make it visible.
-            p.EnableTabSwitcherMode(index, tabSwitchMode);
+            p.EnableTabSwitcherMode(sessionTabIndex, tabSwitchMode);
             p.Visibility(Visibility::Visible);
             p.SelectNextItem(bMoveRight);
         }
@@ -608,6 +1158,10 @@ namespace winrt::TerminalApp::implementation
         tabIndex = std::clamp(tabIndex, 0u, _tabs.Size() - 1);
 
         auto tab{ _tabs.GetAt(tabIndex) };
+        if (const auto sessionId = _GetSessionForTab(tab); sessionId && *sessionId != _activeTabSessionId)
+        {
+            _SwitchToSession(*sessionId, false);
+        }
         // GH#11107 - Always just set the item directly first so that if
         // tab movement is done as part of multiple actions following calls
         // to _GetFocusedTab will return the correct tab.
@@ -1156,6 +1710,12 @@ namespace winrt::TerminalApp::implementation
             if (selectedIndex >= 0 && selectedIndex < gsl::narrow_cast<int32_t>(_tabs.Size()))
             {
                 const auto tab{ _tabs.GetAt(selectedIndex) };
+                if (const auto sessionId = _GetSessionForTab(tab); sessionId && *sessionId != _activeTabSessionId)
+                {
+                    _activeTabSessionId = *sessionId;
+                    _ApplySessionVisibility(false);
+                    _RefreshSessionSidebar();
+                }
                 _UpdatedSelectedTab(tab);
             }
         }

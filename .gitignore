@@ -274,6 +274,9 @@ tools/.razzlerc.*
 MSG*.bin
 /*.exe
 
+/.misku-validation/
+/artifacts/
+
 # python
 *.pyc
 

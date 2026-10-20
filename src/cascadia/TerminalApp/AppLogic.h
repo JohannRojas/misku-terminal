@@ -73,6 +73,7 @@ namespace winrt::TerminalApp::implementation
         // (C++ destroys members in reverse-declaration-order.)
         winrt::com_ptr<LanguageProfileNotifier> _languageProfileNotifier;
         wil::unique_folder_change_reader_nothrow _reader;
+        std::vector<wil::unique_folder_change_reader_nothrow> _miskuConfigReaders;
 
         TerminalApp::ContentManager _contentManager{ winrt::make<implementation::ContentManager>() };
 

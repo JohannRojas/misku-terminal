@@ -1,0 +1,14 @@
+# Escaped newlines before configuration keys in C++ parser fixtures.
+\\n(?=[a-z]+(?:-[a-z]+)*\s*=)
+
+# Floating-point precision in millisecond timing output.
+%\.[0-9]+f(?=ms\b)
+
+# PowerShell timestamp format used for diagnostic trace filenames.
+\byyyyMMdd-HHmmss\b
+
+# MSBuild file logger switch.
+(?<=/)flp(?=:)
+
+# Bash strict-mode flags in the release workflow.
+\bset -euo\b

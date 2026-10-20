@@ -54,4 +54,7 @@ $indexName = $terminalXMLDocument.PriInfo.ResourceMap.name
 
 & (Join-Path $PSScriptRoot "Merge-PriFiles.ps1") -Path $terminalDump, (Join-Path $XamlRoot "resources.pri") -IndexName $indexName -OutputPath $OutputPath -MakePriPath $MakePriPath
 
-Remove-Item -Recurse -Force $tempDir
+$resolvedTemp = (Resolve-Path -LiteralPath $tempDir).Path
+$temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+if (-not $resolvedTemp.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected temporary resource directory' }
+Remove-Item -LiteralPath $resolvedTemp -Recurse -Force

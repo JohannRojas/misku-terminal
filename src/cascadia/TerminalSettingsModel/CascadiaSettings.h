@@ -146,6 +146,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     public:
         static Model::CascadiaSettings LoadDefaults();
         static Model::CascadiaSettings LoadAll();
+        static Windows::Foundation::Collections::IVectorView<winrt::hstring> MiskuConfigPaths();
 
         static winrt::hstring SettingsDirectory();
         static winrt::hstring SettingsPath();
@@ -197,6 +198,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void ResolveMediaResources() { _validateMediaResources(); }
 
         void LogSettingChanges(bool isJsonLoad) const;
+
+        WINRT_PROPERTY(winrt::hstring, MiskuConfigError);
 
     private:
         static const std::filesystem::path& _settingsPath();

@@ -127,6 +127,7 @@ Model::CascadiaSettings CascadiaSettings::Copy() const
         settings->_warnings = winrt::single_threaded_vector(std::move(warnings));
         settings->_loadError = _loadError;
         settings->_deserializationErrorMessage = _deserializationErrorMessage;
+        settings->_MiskuConfigError = _MiskuConfigError;
     }
 
     // defterm

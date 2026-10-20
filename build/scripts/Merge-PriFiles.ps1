@@ -85,4 +85,7 @@ $Path | Where { $_ -Like "*.xml" } | ForEach-Object {
 
 & $MakePriPath new /pr $tempDir /cf $priConfig /o /in $IndexName /of $OutputPath
 
-Remove-Item -Recurse -Force $tempDir
+$resolvedTemp = (Resolve-Path -LiteralPath $tempDir).Path
+$temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+if (-not $resolvedTemp.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected temporary resource directory' }
+Remove-Item -LiteralPath $resolvedTemp -Recurse -Force
