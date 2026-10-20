@@ -8,6 +8,7 @@
 
 #include <dwmapi.h>
 #include <uxtheme.h>
+#include <cmath>
 
 #include "../types/inc/utils.hpp"
 
@@ -38,6 +39,7 @@ void NonClientIslandWindow::Close()
     // Avoid further callbacks into XAML/WinUI-land after we've Close()d the DesktopWindowXamlSource
     // inside `IslandWindow::Close()`. XAML thanks us for doing that by not crashing. Thank you XAML.
     SetWindowLongPtr(_dragBarWindow.get(), GWLP_USERDATA, 0);
+    _callbacks = {};
     IslandWindow::Close();
 }
 
@@ -104,55 +106,57 @@ void NonClientIslandWindow::MakeWindow() noexcept
     THROW_HR_IF_NULL(E_UNEXPECTED, _dragBarWindow);
 }
 
+til::rect NonClientIslandWindow::_GetChromeElementRect(const FrameworkElement& element) const
+{
+    if (!element || element.Visibility() != Visibility::Visible)
+    {
+        return {};
+    }
+    const auto bounds = element.TransformToVisual(_rootGrid).TransformBounds({
+        0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight()) });
+    const auto scale = GetCurrentDpiScale();
+    return {
+        static_cast<til::CoordType>(std::floor(bounds.X * scale)),
+        static_cast<til::CoordType>(std::floor(bounds.Y * scale)),
+        static_cast<til::CoordType>(std::ceil((bounds.X + bounds.Width) * scale)),
+        static_cast<til::CoordType>(std::ceil((bounds.Y + bounds.Height) * scale))
+    };
+}
+
 LRESULT NonClientIslandWindow::_dragBarNcHitTest(const til::point pointer)
 {
-    auto rcParent = GetWindowRect();
-
-    // The collapsed reveal strip is only for reopening the chrome. Do not
-    // expose invisible caption buttons while the titlebar is hidden.
-    if (!_titlebar.ChromeVisible())
+    if (_titlebar.ChromeVisible())
     {
-        const auto resizeBorderHeight = _GetResizeHandleHeight();
-        const auto isOnResizeBorder = pointer.y < rcParent.top + resizeBorderHeight;
-        return isOnResizeBorder ? HTTOP : HTCAPTION;
+        POINT client{ pointer.x, pointer.y };
+        ScreenToClient(_interopWindowHandle, &client);
+        const auto buttons = _GetChromeElementRect(_titlebar.CaptionButtons());
+        // Respect the actual vertical bounds and visibility, including fullscreen.
+        if (buttons.width() > 0 && buttons.contains(til::point{ client.x, client.y }))
+        {
+            const auto distance = buttons.right - client.x;
+            if (distance * 3 <= buttons.width()) { return HTCLOSE; }
+            if (distance * 3 <= buttons.width() * 2) { return HTMAXBUTTON; }
+            return HTMINBUTTON;
+        }
     }
 
-    // The size of the buttons doesn't change over the life of the application.
-    const auto buttonWidthInDips{ _titlebar.CaptionButtonWidth() };
+    const auto parent = GetWindowRect();
+    const auto canResize = !_isMaximized && !_fullscreen && !IsQuakeWindow();
+    return canResize && pointer.y < parent.top + _GetResizeHandleHeight() ? HTTOP : HTCAPTION;
+}
 
-    // However, the DPI scaling might, so get the updated size of the buttons in pixels
-    const auto buttonWidthInPixels{ buttonWidthInDips * GetCurrentDpiScale() };
-
-    // make sure to account for the width of the window frame!
-    const til::rect nonClientFrame{ GetNonClientFrame(_currentDpi) };
-    const auto rightBorder{ rcParent.right - nonClientFrame.right };
-    // From the right to the left,
-    // * are we in the close button?
-    // * the maximize button?
-    // * the minimize button?
-    // If we're not, then we're in either the top resize border, or just
-    // generally in the titlebar.
-    if ((rightBorder - pointer.x) < (buttonWidthInPixels))
+void NonClientIslandWindow::_EndChromeInteraction()
+{
+    if (!_titlebar) { return; }
+    _titlebar.ReleaseButtons();
+    _titlebar.SetWindowInteractionActive(false);
+    POINT cursor{};
+    const auto overSink = GetCursorPos(&cursor) && WindowFromPoint(cursor) == _dragBarWindow.get();
+    _titlebar.SetNonClientPointerOver(overSink);
+    if (overSink)
     {
-        return HTCLOSE;
-    }
-    else if ((rightBorder - pointer.x) < (buttonWidthInPixels * 2))
-    {
-        return HTMAXBUTTON;
-    }
-    else if ((rightBorder - pointer.x) < (buttonWidthInPixels * 3))
-    {
-        return HTMINBUTTON;
-    }
-    else
-    {
-        // If we're not on a caption button, then check if we're on the top
-        // border. If we're not on the top border, then we're just generally in
-        // the caption area.
-        const auto resizeBorderHeight = _GetResizeHandleHeight();
-        const auto isOnResizeBorder = pointer.y < rcParent.top + resizeBorderHeight;
-
-        return isOnResizeBorder ? HTTOP : HTCAPTION;
+        TRACKMOUSEEVENT tracking{ sizeof(tracking), TME_LEAVE | TME_NONCLIENT, _dragBarWindow.get(), HOVER_DEFAULT };
+        _trackingMouse = TrackMouseEvent(&tracking) != FALSE;
     }
 }
 
@@ -258,7 +262,10 @@ LRESULT NonClientIslandWindow::_InputSinkMessageHandler(UINT const message,
         case HTTOP:
         case HTCAPTION:
         {
-            // Pass caption-related nonclient messages to the parent window.
+            // Windows runs a nested move/resize loop inside this call. Mouse
+            // leave/capture changes during that loop must not collapse chrome.
+            _titlebar.SetWindowInteractionActive(true);
+            const auto endInteraction = wil::scope_exit([this] { _EndChromeInteraction(); });
             auto parentWindow{ GetHandle() };
             return SendMessage(parentWindow, message, wparam, lparam);
         }
@@ -321,10 +328,24 @@ void NonClientIslandWindow::_ResizeDragBarWindow() noexcept
     const til::rect rect{ _GetDragAreaRect() };
     if (_IsTitlebarVisible() && rect.size().area() > 0)
     {
+        // Leave the XAML pin interactive without losing native Snap hit testing.
+        // Coordinates for the region are local to the input sink, not the parent.
+        wil::unique_hrgn region{ CreateRectRgn(0, 0, rect.width(), rect.height()) };
+        if (_titlebar.ChromeVisible())
+        {
+            const auto pin = _GetChromeElementRect(_titlebar.PinButton());
+            wil::unique_hrgn exclusion{ CreateRectRgn(pin.left - rect.left, pin.top - rect.top,
+                                                     pin.right - rect.left, pin.bottom - rect.top) };
+            if (region && exclusion) { CombineRgn(region.get(), region.get(), exclusion.get(), RGN_DIFF); }
+        }
+        if (region && SetWindowRgn(_dragBarWindow.get(), region.get(), FALSE)) { region.release(); }
+
+        POINT origin{ rect.left, rect.top };
+        MapWindowPoints(_interopWindowHandle, GetHandle(), &origin, 1);
         SetWindowPos(_dragBarWindow.get(),
                      HWND_TOP,
-                     rect.left,
-                     rect.top + _GetTopBorderHeight(),
+                     origin.x,
+                     origin.y,
                      rect.width(),
                      rect.height(),
                      SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -377,6 +398,10 @@ void NonClientIslandWindow::Initialize()
     _titlebar = winrt::TerminalApp::TitlebarControl{ reinterpret_cast<uint64_t>(GetHandle()) };
     _dragBar = _titlebar.DragBar();
 
+    _callbacks.chromeGeometryChanged = _titlebar.ChromeGeometryChanged(winrt::auto_revoke, [this](auto&&, auto&&) { _ResizeDragBarWindow(); });
+    _callbacks.titlebarSizeChanged = _titlebar.SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
+    _callbacks.pinSizeChanged = _titlebar.PinButton().SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
+    _callbacks.captionSizeChanged = _titlebar.CaptionButtons().SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
     _callbacks.dragBarSizeChanged = _dragBar.SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
     _callbacks.rootGridSizeChanged = _rootGrid.SizeChanged(winrt::auto_revoke, { this, &NonClientIslandWindow::_OnDragBarSizeChanged });
 
@@ -983,6 +1008,12 @@ void NonClientIslandWindow::_UpdateFrameMargins() const noexcept
 {
     switch (message)
     {
+    case WM_ENTERSIZEMOVE:
+        if (_titlebar) { _titlebar.SetWindowInteractionActive(true); }
+        break;
+    case WM_EXITSIZEMOVE:
+        _EndChromeInteraction();
+        break;
     case WM_NCACTIVATE:
     {
         const bool activated = LOWORD(wParam) != 0;
@@ -1201,6 +1232,7 @@ void NonClientIslandWindow::_UpdateTitlebarVisibility()
     _rootGrid.RowDefinitions().GetAt(0).Height(GridLengthHelper::FromValueAndType(showTitlebar ? (_titlebar.ChromePinned() ? 40 : 3) : 0, GridUnitType::Pixel));
     _titlebar.Visibility(showTitlebar ? Visibility::Visible : Visibility::Collapsed);
     _titlebar.FullscreenChanged(_fullscreen);
+    _ResizeDragBarWindow();
 }
 
 // Method Description:

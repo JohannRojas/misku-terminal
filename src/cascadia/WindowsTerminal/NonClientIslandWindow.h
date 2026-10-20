@@ -76,6 +76,8 @@ private:
 
     int _GetResizeHandleHeight() const noexcept;
     til::rect _GetDragAreaRect() const noexcept;
+    til::rect _GetChromeElementRect(const winrt::Windows::UI::Xaml::FrameworkElement& element) const;
+    void _EndChromeInteraction();
     int _GetTopBorderHeight() const noexcept;
     LRESULT _dragBarNcHitTest(const til::point pointer);
 
@@ -97,6 +99,10 @@ private:
 
     struct Revokers
     {
+        winrt::TerminalApp::TitlebarControl::ChromeGeometryChanged_revoker chromeGeometryChanged;
+        winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker titlebarSizeChanged;
+        winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker pinSizeChanged;
+        winrt::Windows::UI::Xaml::FrameworkElement::SizeChanged_revoker captionSizeChanged;
         winrt::Windows::UI::Xaml::Controls::Border::SizeChanged_revoker dragBarSizeChanged;
         winrt::Windows::UI::Xaml::Controls::Grid::SizeChanged_revoker rootGridSizeChanged;
         winrt::TerminalApp::TitlebarControl::Loaded_revoker titlebarLoaded;

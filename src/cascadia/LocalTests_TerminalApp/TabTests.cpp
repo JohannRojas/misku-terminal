@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "pch.h"
+#include <atomic>
 
 #include "../TerminalApp/TerminalPage.h"
 #include "../TerminalApp/TerminalWindow.h"
@@ -79,6 +80,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(MiskuStartupWithoutActions);
         TEST_METHOD(MiskuSessionIsolationAndRestore);
         TEST_METHOD(MiskuTitlebarPinnedStartup);
+        TEST_METHOD(MiskuTitlebarInteractionDefersHide);
+        TEST_METHOD(MiskuTitlebarGeometryNotifications);
         TEST_METHOD(MiskuSessionSwitchingLatency);
         TEST_METHOD(MiskuTabColorsStayCurrent);
 
@@ -357,6 +360,81 @@ namespace TerminalAppLocalTests
                 VERIFY_IS_TRUE(titlebar.ChromeVisible());
                 VERIFY_ARE_EQUAL(40.0, titlebar.Height());
             }
+        });
+    }
+
+    void TabTests::MiskuTitlebarInteractionDefersHide()
+    {
+        winrt::TerminalApp::TitlebarControl titlebar{ nullptr };
+        DispatcherTimer probe{ nullptr };
+        std::atomic<bool> dispatcherTicked{};
+        bool previousPinned{};
+        const auto cleanup = wil::scope_exit([&] {
+            TestOnUIThread([&] {
+                if (probe) { probe.Stop(); }
+                titlebar = nullptr;
+                ApplicationState::SharedInstance().MiskuTitlebarPinned(previousPinned);
+            });
+        });
+        TestOnUIThread([&] {
+            const auto state = ApplicationState::SharedInstance();
+            previousPinned = state.MiskuTitlebarPinned();
+            state.MiskuTitlebarPinned(false);
+            titlebar = winrt::TerminalApp::TitlebarControl{ uint64_t{ 0 } };
+            titlebar.SetNonClientPointerOver(true);
+            titlebar.SetNonClientPointerOver(false); // Schedule the original hide.
+            titlebar.SetWindowInteractionActive(true); // Must cancel that hide.
+            titlebar.Focused(false); // Native activation/leave can change during a gesture.
+            probe = DispatcherTimer{};
+            probe.Interval(std::chrono::milliseconds{ 450 });
+            probe.Tick([&](auto&&, auto&&) { dispatcherTicked = true; probe.Stop(); });
+            probe.Start();
+        });
+        // Wait on the test worker, never block the XAML dispatcher.
+        for (size_t i = 0; i < 100 && !dispatcherTicked; ++i) { Sleep(25); }
+        VERIFY_IS_TRUE(dispatcherTicked.load());
+        TestOnUIThread([&] {
+            VERIFY_IS_TRUE(titlebar.ChromeVisible());
+            VERIFY_ARE_EQUAL(40.0, titlebar.Height());
+            titlebar.SetWindowInteractionActive(false);
+        });
+        bool hidden{};
+        for (size_t i = 0; i < 100 && !hidden; ++i)
+        {
+            Sleep(25);
+            TestOnUIThread([&] { hidden = !titlebar.ChromeVisible(); });
+        }
+        VERIFY_IS_TRUE(hidden);
+        TestOnUIThread([&] {
+            VERIFY_ARE_EQUAL(3.0, titlebar.Height());
+            titlebar.SetWindowInteractionActive(true);
+            VERIFY_IS_TRUE(titlebar.ChromeVisible());
+            titlebar.SetWindowInteractionActive(false);
+        });
+    }
+
+    void TabTests::MiskuTitlebarGeometryNotifications()
+    {
+        TestOnUIThread([] {
+            const auto state = ApplicationState::SharedInstance();
+            const auto previousPinned = state.MiskuTitlebarPinned();
+            const auto restore = wil::scope_exit([&] { state.MiskuTitlebarPinned(previousPinned); });
+            state.MiskuTitlebarPinned(false);
+            winrt::TerminalApp::TitlebarControl titlebar{ uint64_t{ 0 } };
+            unsigned notifications{};
+            const auto token = titlebar.ChromeGeometryChanged([&](auto&&, auto&&) { ++notifications; });
+            const auto unsubscribe = wil::scope_exit([&] { titlebar.ChromeGeometryChanged(token); });
+            titlebar.SetNonClientPointerOver(true);
+            VERIFY_ARE_EQUAL(1u, notifications);
+            titlebar.SetNonClientPointerOver(true);
+            VERIFY_ARE_EQUAL(1u, notifications); // No resize for every mouse move.
+            titlebar.FullscreenChanged(true);
+            VERIFY_ARE_EQUAL(2u, notifications);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, titlebar.CaptionButtons().Visibility());
+            titlebar.FullscreenChanged(false);
+            VERIFY_ARE_EQUAL(3u, notifications);
+            VERIFY_ARE_EQUAL(Visibility::Visible, titlebar.CaptionButtons().Visibility());
+            VERIFY_IS_NOT_NULL(titlebar.PinButton());
         });
     }
 

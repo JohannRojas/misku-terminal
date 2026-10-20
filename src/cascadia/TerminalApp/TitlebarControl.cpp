@@ -31,7 +31,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto self{ weakThis.get() })
             {
                 self->_hideTimer.Stop();
-                if (!self->_chromePinned && !self->_xamlPointerOver && !self->_nonClientPointerOver && !self->_keyboardFocusWithin)
+                if (!self->_windowInteractionActive && !self->_chromePinned && !self->_xamlPointerOver && !self->_nonClientPointerOver && !self->_keyboardFocusWithin)
                 {
                     self->_setChromeVisible(false);
                 }
@@ -178,9 +178,25 @@ namespace winrt::TerminalApp::implementation
         _updateAutoHideState();
     }
 
+    FrameworkElement TitlebarControl::PinButton()
+    {
+        return PinChromeButton();
+    }
+
+    FrameworkElement TitlebarControl::CaptionButtons()
+    {
+        return MinMaxCloseControl();
+    }
+
+    void TitlebarControl::SetWindowInteractionActive(bool active)
+    {
+        _windowInteractionActive = active;
+        _updateAutoHideState();
+    }
+
     void TitlebarControl::_updateAutoHideState()
     {
-        const auto shouldShow = _chromePinned || _xamlPointerOver || _nonClientPointerOver || _keyboardFocusWithin;
+        const auto shouldShow = _windowInteractionActive || _chromePinned || _xamlPointerOver || _nonClientPointerOver || _keyboardFocusWithin;
         if (shouldShow)
         {
             _hideTimer.Stop();
@@ -215,11 +231,15 @@ namespace winrt::TerminalApp::implementation
             ChromeRoot().Opacity(0.0);
             Height(collapsedChromeHeight);
         }
+        // The fixed-height children need not resize when this control changes.
+        // Invalidate native input immediately, then refine it after layout.
+        ChromeGeometryChanged.raise(*this, nullptr);
     }
 
     void TitlebarControl::FullscreenChanged(const bool fullscreen)
     {
         MinMaxCloseControl().Visibility(fullscreen ? Visibility::Collapsed : Visibility::Visible);
+        ChromeGeometryChanged.raise(*this, nullptr);
     }
 
     void TitlebarControl::_OnMaximizeOrRestore(byte flag)

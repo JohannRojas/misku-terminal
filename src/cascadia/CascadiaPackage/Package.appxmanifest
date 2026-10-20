@@ -21,7 +21,7 @@
   <Identity
     Name="MiskuTerminal"
     Publisher="CN=Misku Terminal"
-    Version="0.2.0.0" />
+    Version="0.2.8.0" />
 
   <Properties>
     <DisplayName>ms-resource:AppStoreName</DisplayName>

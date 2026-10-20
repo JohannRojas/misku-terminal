@@ -22,6 +22,10 @@ namespace winrt::TerminalApp::implementation
         til::event<Windows::Foundation::EventHandler<Windows::Foundation::IInspectable>> ChromePinnedChanged;
         void PinChrome_Click(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
         void SetNonClientPointerOver(bool pointerOver);
+        void SetWindowInteractionActive(bool active);
+        til::event<Windows::Foundation::EventHandler<Windows::Foundation::IInspectable>> ChromeGeometryChanged;
+        Windows::UI::Xaml::FrameworkElement PinButton();
+        Windows::UI::Xaml::FrameworkElement CaptionButtons();
 
         bool Focused();
         void Focused(bool focused);
@@ -51,6 +55,7 @@ namespace winrt::TerminalApp::implementation
         bool _keyboardFocusWithin{ false };
         bool _chromeVisible{ false };
         bool _chromePinned{ false };
+        bool _windowInteractionActive{ false };
         SafeDispatcherTimer _hideTimer;
 
         void _backgroundChanged(winrt::Windows::UI::Xaml::Media::Brush brush);
