@@ -11,6 +11,7 @@ namespace winrt::TerminalApp::implementation
     {
     public:
         AboutDialog();
+        ~AboutDialog();
 
         winrt::hstring ApplicationDisplayName();
         winrt::hstring ApplicationVersion();
@@ -22,7 +23,13 @@ namespace winrt::TerminalApp::implementation
     private:
         friend struct AboutDialogT<AboutDialog>; // for Xaml to bind events
 
-        std::chrono::system_clock::time_point _lastUpdateCheck{};
+        winrt::event_token _updateChanged{};
+        bool _refreshingUpdates{};
+        void _RefreshUpdates();
+        void _CheckUpdates(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
+        void _InstallUpdate(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
+        void _UpdateNotes(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
+        void _UpdatePreferences(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
 
         void _ThirdPartyNoticesOnClick(const IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _SendFeedbackOnClick(const IInspectable& sender, const Windows::UI::Xaml::Controls::ContentDialogButtonClickEventArgs& eventArgs);

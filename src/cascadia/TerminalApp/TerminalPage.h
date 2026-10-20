@@ -18,6 +18,7 @@
 #include "WindowListEntry.g.h"
 #include "WindowListRequest.g.h"
 #include "Toast.h"
+#include "MiskuUpdateService.h"
 
 #include "WindowsPackageManagerFactory.h"
 
@@ -147,6 +148,7 @@ namespace winrt::TerminalApp::implementation
     {
     public:
         TerminalPage(TerminalApp::WindowProperties properties, const TerminalApp::ContentManager& manager);
+        ~TerminalPage();
 
         // This implements shobjidl's IInitializeWithWindow, but due to a XAML Compiler bug we cannot
         // put it in our inheritance graph. https://github.com/microsoft/microsoft-ui-xaml/issues/3331
@@ -415,6 +417,13 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowDialogHelper(const std::wstring_view& name);
 
         void _ShowAboutDialog();
+        winrt::event_token _miskuUpdatesToken{};
+        safe_void_coroutine _StartMiskuUpdates();
+        void _RefreshMiskuUpdateNotice();
+        void _RenderMiskuUpdateNotice(const Misku::Updates::Snapshot& snapshot);
+        void _MiskuUpdateInstall(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
+        void _MiskuUpdateDismiss(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
+        void _MiskuUpdateNotes(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&);
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowConfirmCloseDialog(ConfirmCloseDialogKind kind);
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowCloseReadOnlyDialog();
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowMultiLinePasteWarningDialog();

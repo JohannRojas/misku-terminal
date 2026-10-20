@@ -69,6 +69,8 @@ function Invoke-MiskuTest {
 Invoke-MiskuTest -Name settings -Directory (Join-Path $outputRoot 'UnitTests_SettingsModel') -Library 'SettingsModel.Unit.Tests.dll' -Options '/inproc'
 Invoke-MiskuTest -Name commandline -Directory (Join-Path $outputRoot 'TestHostApp') `
     -Library 'TerminalApp.LocalTests.dll' -Options @('/name:*CommandlineTest*', '/inproc')
+Invoke-MiskuTest -Name updates -Directory (Join-Path $outputRoot 'TestHostApp') `
+    -Library 'TerminalApp.LocalTests.dll' -Options @('/name:*MiskuUpdateTests*', '/inproc')
 if ($UI) {
     Invoke-MiskuTest -Name sessions -Directory (Join-Path $outputRoot 'TestHostApp') `
         -Library 'TerminalApp.LocalTests.dll' -Options '/name:*TabTests::*' -LogOutput High

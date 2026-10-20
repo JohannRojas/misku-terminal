@@ -1068,4 +1068,52 @@
   <data name="MiskuConfigWarningInfoBar.Title" xml:space="preserve">
     <value>No se pudo aplicar config.misku</value>
   </data>
+  <data name="MiskuUpdateInfoBar.Title" xml:space="preserve">
+    <value>Actualización de Misku</value>
+  </data>
+  <data name="MiskuUpdateInstallButton.Content" xml:space="preserve">
+    <value>Actualizar al cerrar</value>
+  </data>
+  <data name="MiskuUpdateLaterButton.Content" xml:space="preserve">
+    <value>Después</value>
+  </data>
+  <data name="MiskuUpdateNotesButton.Content" xml:space="preserve">
+    <value>Ver cambios</value>
+  </data>
+  <data name="MiskuCheckUpdatesButton.Content" xml:space="preserve">
+    <value>Buscar actualizaciones</value>
+  </data>
+  <data name="MiskuAutomaticUpdates.Header" xml:space="preserve">
+    <value>Buscar automáticamente</value>
+  </data>
+  <data name="MiskuPreviewUpdates.Header" xml:space="preserve">
+    <value>Incluir versiones preliminares</value>
+  </data>
+  <data name="MiskuUpdateUnsupported" xml:space="preserve">
+    <value>Instala el MSIX de Misku para actualizar desde aquí.</value>
+  </data>
+  <data name="MiskuUpdateIdle" xml:space="preserve">
+    <value>Busca una versión más reciente de Misku.</value>
+  </data>
+  <data name="MiskuUpdateChecking" xml:space="preserve">
+    <value>Buscando actualizaciones…</value>
+  </data>
+  <data name="MiskuUpdateNone" xml:space="preserve">
+    <value>No hay actualizaciones disponibles en este canal.</value>
+  </data>
+  <data name="MiskuUpdateAvailable" xml:space="preserve">
+    <value>Nueva versión disponible:</value>
+  </data>
+  <data name="MiskuUpdateDownloading" xml:space="preserve">
+    <value>Preparando actualización:</value>
+  </data>
+  <data name="MiskuUpdateReady" xml:space="preserve">
+    <value>Actualización preparada. Cierra todas las ventanas de Misku cuando termines tu trabajo; se aplicará al volver a abrir.</value>
+  </data>
+  <data name="MiskuUpdateCheckError" xml:space="preserve">
+    <value>No se pudieron buscar actualizaciones. Inténtalo más tarde.</value>
+  </data>
+  <data name="MiskuUpdateInstallError" xml:space="preserve">
+    <value>No se pudo preparar la actualización. Tu versión actual sigue intacta; puedes reintentar.</value>
+  </data>
 </root>

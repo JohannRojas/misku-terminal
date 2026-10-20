@@ -88,6 +88,8 @@
     <ClInclude Include="Commandline.h" />
     <ClInclude Include="CommandPaletteItems.h" />
     <ClInclude Include="Jumplist.h" />
+    <ClInclude Include="MiskuUpdateModel.h" />
+    <ClInclude Include="MiskuUpdateService.h" />
     <ClInclude Include="LanguageProfileNotifier.h" />
     <ClInclude Include="MinMaxCloseControl.h">
       <DependentUpon>MinMaxCloseControl.xaml</DependentUpon>
@@ -256,6 +258,7 @@
     <ClCompile Include="ShortcutActionDispatch.cpp">
       <DependentUpon>ShortcutActionDispatch.idl</DependentUpon>
     </ClCompile>
+    <ClCompile Include="MiskuUpdateService.cpp" />
     <ClCompile Include="AboutDialog.cpp">
       <DependentUpon>AboutDialog.xaml</DependentUpon>
     </ClCompile>

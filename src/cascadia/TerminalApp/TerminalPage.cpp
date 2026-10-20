@@ -914,6 +914,7 @@ namespace winrt::TerminalApp::implementation
                 if (auto self{ weak.get() })
                 {
                     self->Initialized.raise(*self, nullptr);
+                    self->_StartMiskuUpdates();
                 }
             });
         }
@@ -923,6 +924,74 @@ namespace winrt::TerminalApp::implementation
     // - Show a dialog with "About" information. Displays the app's Display
     //   Name, version, getting started link, source code link, documentation link, release
     //   Notes link, send feedback link and privacy policy link.
+    TerminalPage::~TerminalPage()
+    {
+        Misku::Updates::Service::Current().Changed.remove(_miskuUpdatesToken);
+    }
+
+    safe_void_coroutine TerminalPage::_StartMiskuUpdates()
+    {
+        // Allow the first frame and terminal startup to complete before any IO.
+        const auto weak = get_weak();
+        co_await winrt::resume_after(std::chrono::seconds{ 5 });
+        if (auto self = weak.get())
+        {
+            co_await wil::resume_foreground(self->Dispatcher());
+            auto& updates = Misku::Updates::Service::Current();
+            if (self->_miskuUpdatesToken.value == 0)
+            {
+                self->_miskuUpdatesToken = updates.Changed.add([weak](auto&&, auto&&) {
+                    if (auto page = weak.get())
+                    {
+                        page->Dispatcher().RunAsync(CoreDispatcherPriority::Low, [weak] {
+                            if (auto current = weak.get()) { current->_RefreshMiskuUpdateNotice(); }
+                        });
+                    }
+                });
+            }
+            self->_RefreshMiskuUpdateNotice();
+            updates.Start();
+        }
+    }
+
+    void TerminalPage::_RefreshMiskuUpdateNotice()
+    {
+        _RenderMiskuUpdateNotice(Misku::Updates::Service::Current().GetSnapshot());
+    }
+
+    void TerminalPage::_RenderMiskuUpdateNotice(const Misku::Updates::Snapshot& snapshot)
+    {
+        using Misku::Updates::Status;
+        const auto show = Misku::Updates::ShowNotice(snapshot);
+        if (!show && !FindName(L"MiskuUpdateInfoBar")) { return; }
+        const auto bar = MiskuUpdateInfoBar();
+        bar.Message(Misku::Updates::StatusText(snapshot));
+        bar.Severity(snapshot.State == Status::Error ? MUX::Controls::InfoBarSeverity::Warning : MUX::Controls::InfoBarSeverity::Informational);
+        bar.IsOpen(show);
+        const auto canInstall = snapshot.Update && (snapshot.State == Status::Available || snapshot.State == Status::Error);
+        MiskuUpdateInstallButton().Visibility(canInstall ? Visibility::Visible : Visibility::Collapsed);
+        MiskuUpdateLaterButton().Visibility(snapshot.State == Status::Available ? Visibility::Visible : Visibility::Collapsed);
+        MiskuUpdateNotesButton().Visibility(snapshot.Update ? Visibility::Visible : Visibility::Collapsed);
+    }
+
+    void TerminalPage::_MiskuUpdateInstall(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&)
+    {
+        Misku::Updates::Service::Current().Install();
+    }
+
+    void TerminalPage::_MiskuUpdateDismiss(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&)
+    {
+        Misku::Updates::Service::Current().Dismiss();
+    }
+
+    void TerminalPage::_MiskuUpdateNotes(const IInspectable&, const Windows::UI::Xaml::RoutedEventArgs&)
+    {
+        if (const auto snapshot = Misku::Updates::Service::Current().GetSnapshot(); snapshot.Update)
+        {
+            ShellExecute(nullptr, L"open", winrt::to_hstring(snapshot.Update->NotesUri()).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        }
+    }
+
     void TerminalPage::_ShowAboutDialog()
     {
         _ShowDialogHelper(L"AboutDialog");

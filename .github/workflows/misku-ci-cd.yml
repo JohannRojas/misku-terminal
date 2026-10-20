@@ -44,6 +44,8 @@ jobs:
       display_version: ${{ steps.version.outputs.display_version }}
       tag: ${{ steps.version.outputs.tag }}
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+      update_channel: ${{ steps.version.outputs.update_channel }}
+      update_artifact_name: ${{ steps.updates.outputs.artifact_name }}
 
     steps:
       - name: Check out source
@@ -61,7 +63,7 @@ jobs:
         run: |
           $displayVersion = if ($env:REQUESTED_VERSION) { $env:REQUESTED_VERSION.Trim() } else { '' }
           if ([string]::IsNullOrWhiteSpace($displayVersion)) {
-              $displayVersion = "0.2.$env:GITHUB_RUN_NUMBER"
+              $displayVersion = "0.3.$env:GITHUB_RUN_NUMBER"
           }
 
           if ($displayVersion -notmatch '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$') {
@@ -76,7 +78,7 @@ jobs:
 
           $channel = $env:REQUESTED_CHANNEL
           if ([string]::IsNullOrWhiteSpace($channel)) {
-              $channel = if ($env:GITHUB_EVENT_NAME -eq 'push') { 'prerelease' } else { 'build-only' }
+              $channel = if ($env:GITHUB_EVENT_NAME -eq 'push') { 'stable' } else { 'build-only' }
           }
 
           $appxVersion = "$displayVersion.0"
@@ -85,6 +87,7 @@ jobs:
           "appx_version=$appxVersion" >> $env:GITHUB_OUTPUT
           "tag=misku-v$displayVersion" >> $env:GITHUB_OUTPUT
           "is_prerelease=$isPrerelease" >> $env:GITHUB_OUTPUT
+          "update_channel=$(if ($channel -eq 'stable') { 'stable' } else { 'preview' })" >> $env:GITHUB_OUTPUT
 
       - name: Validate repository inputs
         shell: pwsh
@@ -274,6 +277,37 @@ jobs:
               Set-Content -LiteralPath "$zipPath.sha256" -Encoding ascii
 
           "artifact_name=$artifactName" >> $env:GITHUB_OUTPUT
+      - name: Create signed update artifacts
+        id: updates
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          MISKU_SIGNING_PFX_BASE64: ${{ secrets.MISKU_SIGNING_PFX_BASE64 }}
+          MISKU_SIGNING_PASSWORD: ${{ secrets.MISKU_SIGNING_PASSWORD }}
+        run: |
+          $version = '${{ steps.version.outputs.display_version }}'
+          $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts/update'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $source = Get-ChildItem src/cascadia/CascadiaPackage/AppPackages -Recurse -Filter 'CascadiaPackage_*.msix' |
+              Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          $signed = Join-Path $output "MiskuTerminal-$version-x64.msix"
+          Copy-Item -LiteralPath $source.FullName -Destination $signed
+          $certificate = Join-Path $output 'MiskuTerminal.cer'
+          ./tools/misku/Sign-MiskuPackage.ps1 -PackagePath $signed -CertificateOutputPath $certificate
+          ./tools/misku/New-MiskuUpdateArtifacts.ps1 -PackagePath $signed -OutputDirectory $output `
+              -Channel '${{ steps.version.outputs.update_channel }}' -XamlDependencyPath '${{ steps.validate.outputs.xaml_appx_path }}'
+          Copy-Item -Path "artifacts/MiskuTerminal-$version-x64-portable.zip*" -Destination $output
+          "artifact_name=MiskuTerminal-$version-x64-update" >> $env:GITHUB_OUTPUT
+
+      - name: Upload signed update artifacts
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.updates.outputs.artifact_name }}
+          path: artifacts/update/
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload verified artifact
         uses: actions/upload-artifact@v7
         with:
@@ -285,48 +319,29 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish GitHub release
+    name: Publish signed release and update channel
     needs: build
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && inputs.release_channel != 'build-only')
     runs-on: ubuntu-latest
+    concurrency:
+      group: misku-update-publication
+      cancel-in-progress: false
     permissions:
       contents: write
-
     steps:
-      - name: Download verified artifact
-        uses: actions/download-artifact@v8
+      - uses: actions/checkout@v7
         with:
-          name: ${{ needs.build.outputs.artifact_name }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.update_artifact_name }}
           path: dist
-
-      - name: Publish version
-        shell: bash
+      - name: Publish immutable package and update discovery
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.build.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.build.outputs.display_version }}
-          IS_PRERELEASE: ${{ needs.build.outputs.is_prerelease }}
-        run: |
-          set -euo pipefail
-
-          asset="$(find dist -type f -name '*.zip' -print -quit)"
-          checksum="$(find dist -type f -name '*.sha256' -print -quit)"
-          test -n "$asset"
-          test -n "$checksum"
-
-          notes="Automated Misku Terminal build from commit $GITHUB_SHA.
-
-          Download the portable x64 ZIP, extract it completely and run misku.exe.
-          Verify the download with the accompanying SHA-256 file."
-
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              gh release upload "$RELEASE_TAG" "$asset" "$checksum" --repo "$GITHUB_REPOSITORY" --clobber
-          elif [ "$IS_PRERELEASE" = "true" ]; then
-              args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Misku Terminal $RELEASE_VERSION" --notes "$notes")
-              gh release create "$RELEASE_TAG" "$asset" "$checksum" "${args[@]}" --prerelease
-          else
-              args=(--repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Misku Terminal $RELEASE_VERSION" --notes "$notes")
-              gh release create "$RELEASE_TAG" "$asset" "$checksum" "${args[@]}"
-          fi
+        run: >-
+          ./tools/misku/Publish-MiskuUpdate.ps1 -ArtifactDirectory dist
+          -Commit '${{ github.sha }}' -Channel '${{ needs.build.outputs.update_channel }}'

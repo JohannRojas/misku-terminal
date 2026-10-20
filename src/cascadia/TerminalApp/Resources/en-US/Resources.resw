@@ -1068,4 +1068,52 @@
   <data name="MiskuConfigWarningInfoBar.Title" xml:space="preserve">
     <value>Could not apply config.misku</value>
   </data>
+  <data name="MiskuUpdateInfoBar.Title" xml:space="preserve">
+    <value>Misku update</value>
+  </data>
+  <data name="MiskuUpdateInstallButton.Content" xml:space="preserve">
+    <value>Update when closed</value>
+  </data>
+  <data name="MiskuUpdateLaterButton.Content" xml:space="preserve">
+    <value>Later</value>
+  </data>
+  <data name="MiskuUpdateNotesButton.Content" xml:space="preserve">
+    <value>Release notes</value>
+  </data>
+  <data name="MiskuCheckUpdatesButton.Content" xml:space="preserve">
+    <value>Check for updates</value>
+  </data>
+  <data name="MiskuAutomaticUpdates.Header" xml:space="preserve">
+    <value>Check automatically</value>
+  </data>
+  <data name="MiskuPreviewUpdates.Header" xml:space="preserve">
+    <value>Include preview versions</value>
+  </data>
+  <data name="MiskuUpdateUnsupported" xml:space="preserve">
+    <value>Install the Misku MSIX to update from here.</value>
+  </data>
+  <data name="MiskuUpdateIdle" xml:space="preserve">
+    <value>Check for a newer version of Misku.</value>
+  </data>
+  <data name="MiskuUpdateChecking" xml:space="preserve">
+    <value>Checking for updates…</value>
+  </data>
+  <data name="MiskuUpdateNone" xml:space="preserve">
+    <value>No updates are available for this channel.</value>
+  </data>
+  <data name="MiskuUpdateAvailable" xml:space="preserve">
+    <value>New version available:</value>
+  </data>
+  <data name="MiskuUpdateDownloading" xml:space="preserve">
+    <value>Preparing update:</value>
+  </data>
+  <data name="MiskuUpdateReady" xml:space="preserve">
+    <value>Update ready. Close all Misku windows when you finish your work; it will apply on the next launch.</value>
+  </data>
+  <data name="MiskuUpdateCheckError" xml:space="preserve">
+    <value>Could not check for updates. Try again later.</value>
+  </data>
+  <data name="MiskuUpdateInstallError" xml:space="preserve">
+    <value>Could not prepare the update. Your current version is unchanged; you can try again.</value>
+  </data>
 </root>

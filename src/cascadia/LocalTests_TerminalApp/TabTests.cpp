@@ -81,6 +81,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(MiskuTitlebarPinnedStartup);
         TEST_METHOD(MiskuSessionSwitchingLatency);
         TEST_METHOD(MiskuTabColorsStayCurrent);
+        TEST_METHOD(MiskuUpdateNoticeStates);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -338,6 +339,30 @@ namespace TerminalAppLocalTests
                                                     tabCount, phase, switchDurations[15], layoutDurations[15]));
             }
         }
+    }
+
+    void TabTests::MiskuUpdateNoticeStates()
+    {
+        TestOnUIThread([&] {
+            auto page = _commonSetup();
+            const auto tabCount = page->_tabs.Size();
+            const auto selected = page->_GetFocusedTabIndex();
+            Misku::Updates::Snapshot state;
+            state.State = Misku::Updates::Status::Available;
+            state.Update = Misku::Updates::Release{ *Misku::Updates::Version::Parse("0.3.10.0"), "", "", false };
+            page->_RenderMiskuUpdateNotice(state);
+            VERIFY_IS_TRUE(page->MiskuUpdateInfoBar().IsOpen());
+            VERIFY_ARE_EQUAL(Visibility::Visible, page->MiskuUpdateInstallButton().Visibility());
+            VERIFY_ARE_EQUAL(tabCount, page->_tabs.Size());
+            VERIFY_IS_TRUE(selected == page->_GetFocusedTabIndex());
+            state.State = Misku::Updates::Status::Ready;
+            page->_RenderMiskuUpdateNotice(state);
+            VERIFY_ARE_EQUAL(Visibility::Collapsed, page->MiskuUpdateInstallButton().Visibility());
+            state.Dismissed = true;
+            page->_RenderMiskuUpdateNotice(state);
+            VERIFY_IS_FALSE(page->MiskuUpdateInfoBar().IsOpen());
+            VERIFY_IS_TRUE(selected == page->_GetFocusedTabIndex());
+        });
     }
 
     void TabTests::MiskuTitlebarPinnedStartup()

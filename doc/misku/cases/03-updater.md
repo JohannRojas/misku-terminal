@@ -1,0 +1,14 @@
+# Misku: estabilizar actualizador y publicación
+
+Modelo solicitado: gpt-6.1-sol. Esfuerzo: xhigh.
+
+Worktree: C:\Users\johan\.codex\worktrees\misku-updater-stability\misku-terminal
+
+Fecha de revisión: 2026-10-03. Base verificada: 4aa01e3f8bcb9845e3216660dbfb595e0c6f5176 (origin/feat/misku-unified-experience, PR #4). origin/main: dd494ac79a82a04e1e7252a91c8939a3c3039908. Último CI publicado correcto: 34172120891; no valida el WIP del actualizador. Instalada según consulta de esta conversación: 0.1.2.0; su TerminalApp.dll coincide con el paquete baseline archivado. No equiparar esta versión a la rama publicada.
+Esta ejecución es de análisis y preparación del caso, no de implementación o despliegue. Entregar ANALISIS.md en doc/misku/cases dentro de este worktree con hallazgos ordenados por prioridad, archivo/línea, evidencia, hipótesis pendientes, propuesta mínima, criterios de aceptación y validación. No modificar código del producto, configuración del equipo, certificados, secretos, ramas remotas, PR o instalación. No compilar cuatro copias completas en paralelo. No reutilizar logs viejos como validación nueva. No iniciar el ejecutable Misku: la validación GUI previa estaba bloqueada por política del producto; no buscar otra vía para sortearla. Puede realizar inspección de código y comprobaciones estáticas. Conservar CRLF donde proceda.
+Operar siempre con workdir igual al worktree indicado, nunca escribir en C:\dev\misku-terminal. Los otros casos usan copias distintas del mismo commit. No enviar mensajes a otras tareas ni implementar cambios en sus carpetas. El usuario continuará cada tarea por separado.
+
+
+## Caso
+
+Este es el único worktree que recibe copia exacta de los 22 archivos locales pendientes del actualizador. Los originales quedan intactos. Leer inventario pending-files.json y build-updater-3.log en .misku-validation/case-evidence. Error confirmado de última compilación: C2664 en TerminalPage.xaml.g.hpp, InfoBar.CloseButtonClick envía IInspectable pero _MiskuUpdateDismiss espera RoutedEventArgs; MSB4181 es consecuencia, no causa. Revisar además service/máquina de estados, temporizadores/timeouts, actualizaciones simultáneas, canales stable/preview, integridad SHA256/identidad/firma, instalación diferida sin matar shells, rollback del instalador y preferencias. Revisar scripts Initialize-MiskuSigning, Sign-MiskuPackage, New-MiskuUpdateArtifacts y Publish-MiskuUpdate, y workflow CI. No asumir certificados o secrets existentes. No crearlos ni publicar nada en esta fase. Riesgos conocidos a investigar, no conclusiones automáticas: estado Pending persistente sin contrastar despliegue real, ventanas/procesos concurrentes, bytes huérfanos, reintentos de publicación, separación PR/secrets. Proponer etapas: compilación, tests, paquete firmado, CI build-only y prueba de actualización que preserve datos antes de publicar canal. No incluir cambios de barra de casos 01/02.

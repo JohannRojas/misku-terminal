@@ -125,6 +125,22 @@
 
             <StackPanel Grid.Row="1"
                         Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+                <mux:InfoBar x:Name="MiskuUpdateInfoBar"
+                             x:Load="False"
+                             x:Uid="MiskuUpdateInfoBar"
+                             IsOpen="False" IsClosable="True"
+                             CloseButtonClick="_MiskuUpdateDismiss">
+                    <StackPanel Spacing="6">
+                        <Button x:Name="MiskuUpdateInstallButton" x:Uid="MiskuUpdateInstallButton"
+                                Click="_MiskuUpdateInstall" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="MiskuUpdateNotesButton" x:Uid="MiskuUpdateNotesButton"
+                                    Click="_MiskuUpdateNotes" />
+                            <Button x:Name="MiskuUpdateLaterButton" x:Uid="MiskuUpdateLaterButton"
+                                    Click="_MiskuUpdateDismiss" />
+                        </StackPanel>
+                    </StackPanel>
+                </mux:InfoBar>
                 <mux:InfoBar x:Name="MiskuConfigWarningInfoBar"
                              x:Uid="MiskuConfigWarningInfoBar"
                              IsOpen="False" IsClosable="True" Severity="Warning" />
